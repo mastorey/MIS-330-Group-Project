@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "rJkWM55d01o=",
+  "success": true,
+  "projectFilePath": "/Users/sydneymarch/Documents/Fall 2025/MIS 330/GroupProject/MIS-330-Group-Project/api/api.csproj",
+  "expectedPackageFiles": [
+    "/Users/sydneymarch/.nuget/packages/microsoft.aspnetcore.openapi/9.0.8/microsoft.aspnetcore.openapi.9.0.8.nupkg.sha512",
+    "/Users/sydneymarch/.nuget/packages/microsoft.openapi/1.6.17/microsoft.openapi.1.6.17.nupkg.sha512"
+  ],
+  "logs": []
+}
