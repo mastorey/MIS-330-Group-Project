@@ -15,25 +15,21 @@ namespace MyApp.Namespace
 
         public MySqlConnection GetConnection()
         {
+            MySqlConnection connection = new MySqlConnection(_connectionString);
             try
             {
-                var connection = new MySqlConnection(_connectionString);
                 connection.Open();
                 Console.WriteLine("Database connection established successfully.");
                 return connection;
             }
-            catch (MySqlException ex)
+            catch
             {
-                Console.WriteLine($"MySQL Error: {ex.Message}");
-                Console.WriteLine($"Error Code: {ex.Number}");
-                throw;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Connection Error: {ex.Message}");
+                connection.Dispose();
                 throw;
             }
         }
     }
 }
+
+
 
