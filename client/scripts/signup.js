@@ -72,13 +72,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // If form is valid, prepare data for submission
     const formData = {
-      firstName: document.getElementById('firstName').value.trim(),
-      lastName: document.getElementById('lastName').value.trim(),
-      email: document.getElementById('email').value.trim().toLowerCase(),
-      phone: document.getElementById('phone').value.replace(/\D/g, ''), // Store as digits only
-      birthday: document.getElementById('birthday').value,
-      password: password.value,
-      userType: 'client' // Distinguish client from trainer
+      FirstName: document.getElementById('firstName').value.trim(),
+      LastName: document.getElementById('lastName').value.trim(),
+      Email: document.getElementById('email').value.trim().toLowerCase(),
+      Phone: document.getElementById('phone').value.trim(), // Store with dashes (123-456-7890)
+      Birthday: document.getElementById('birthday').value,
+      Password: password.value,
+      UserType: 'client' // Will be normalized to "Client" on backend
     };
 
     // TODO: Replace with actual API call
@@ -103,33 +103,50 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 });
 
-// Placeholder function for form submission
+// Form submission function
 async function submitForm(formData) {
+  const errorMessage = document.getElementById('errorMessage') || createErrorMessageElement();
+  
   try {
-    // TODO: Replace with actual API endpoint
-    // const response = await fetch('/api/auth/signup', {
-    //   method: 'POST',
-    //   headers: {
-    //     'Content-Type': 'application/json',
-    //   },
-    //   body: JSON.stringify(formData)
-    // });
+    const response = await fetch('http://localhost:5176/api/auth/signup', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(formData)
+    });
     
-    // if (response.ok) {
-    //   const data = await response.json();
-    //   // Redirect to login or dashboard
-    //   window.location.href = '/login';
-    // } else {
-    //   const error = await response.json();
-    //   alert('Error: ' + error.message);
-    // }
-
-    // Mock success for now
-    alert('Account creation successful! (This is a placeholder - connect to API)');
-    console.log('Would submit to API:', formData);
+    const data = await response.json();
+    
+    if (response.ok) {
+      errorMessage.className = 'alert alert-success';
+      errorMessage.textContent = data.message || 'Account created successfully! Redirecting to login...';
+      errorMessage.classList.remove('d-none');
+      
+      // Redirect to login after 2 seconds
+      setTimeout(() => {
+        window.location.href = './login.html';
+      }, 2000);
+    } else {
+      errorMessage.className = 'alert alert-danger';
+      errorMessage.textContent = data.message || 'Account creation failed. Please try again.';
+      errorMessage.classList.remove('d-none');
+    }
   } catch (error) {
     console.error('Error submitting form:', error);
-    alert('An error occurred. Please try again.');
+    errorMessage.className = 'alert alert-danger';
+    errorMessage.textContent = 'An error occurred. Please try again.';
+    errorMessage.classList.remove('d-none');
   }
+}
+
+function createErrorMessageElement() {
+  const form = document.getElementById('signupForm');
+  const errorDiv = document.createElement('div');
+  errorDiv.id = 'errorMessage';
+  errorDiv.className = 'alert d-none';
+  errorDiv.setAttribute('role', 'alert');
+  form.insertBefore(errorDiv, form.querySelector('.d-grid'));
+  return errorDiv;
 }
 
