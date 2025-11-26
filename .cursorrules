@@ -43,6 +43,114 @@ File Location: Store SQL initialization scripts in the /api folder (MySQL does n
 
 Connection String: Store in appsettings.json for simplicity (e.g., "Server=localhost;Database=projectdb;User ID=root;Password=yourpassword;")
 
+Database Schema Structure
+
+The database consists of the following tables with their relationships:
+
+Users Table
+
+Primary Key: UserID (INT AUTO_INCREMENT)
+
+Columns: Email (VARCHAR(255) UNIQUE NOT NULL), Password (VARCHAR(255) NOT NULL), FirstName (VARCHAR(100) NOT NULL), LastName (VARCHAR(100) NOT NULL), Birthday (DATE NOT NULL), UserType (VARCHAR(20) NOT NULL, CHECK: 'Client', 'Trainer', 'Admin'), IsDeleted (BOOLEAN DEFAULT 0), CreatedAt (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
+
+Specialties Table
+
+Primary Key: SpecialtyID (INT AUTO_INCREMENT)
+
+Columns: SpecialtyName (VARCHAR(100) UNIQUE NOT NULL), Description (TEXT), IsDeleted (BOOLEAN DEFAULT 0), CreatedAt (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
+
+Clients Table
+
+Primary Key: ClientID (INT)
+
+Foreign Key: ClientID REFERENCES Users(UserID) ON DELETE CASCADE ON UPDATE CASCADE
+
+Columns: JoinDate (DATE NOT NULL), Phone (VARCHAR(20)), IsDeleted (BOOLEAN DEFAULT 0), CreatedAt (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
+
+Trainers Table
+
+Primary Key: TrainerID (INT)
+
+Foreign Key: TrainerID REFERENCES Users(UserID) ON DELETE CASCADE ON UPDATE CASCADE
+
+Columns: Certification (VARCHAR(255)), Phone (VARCHAR(20)), IsDeleted (BOOLEAN DEFAULT 0), CreatedAt (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
+
+Admins Table
+
+Primary Key: AdminID (INT)
+
+Foreign Key: AdminID REFERENCES Users(UserID) ON DELETE CASCADE ON UPDATE CASCADE
+
+Columns: IsDeleted (BOOLEAN DEFAULT 0), CreatedAt (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
+
+Rooms Table
+
+Primary Key: RoomID (INT AUTO_INCREMENT)
+
+Columns: RoomNo (VARCHAR(20) UNIQUE NOT NULL), RoomName (VARCHAR(100) NOT NULL), IsDeleted (BOOLEAN DEFAULT 0), CreatedAt (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
+
+TrainerSpecialties Table
+
+Primary Key: Composite (TrainerID, SpecialtyID)
+
+Foreign Keys: TrainerID REFERENCES Trainers(TrainerID) ON DELETE CASCADE ON UPDATE CASCADE, SpecialtyID REFERENCES Specialties(SpecialtyID) ON DELETE CASCADE ON UPDATE CASCADE
+
+Columns: IsDeleted (BOOLEAN DEFAULT 0), CreatedAt (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
+
+RoomSpecialties Table
+
+Primary Key: Composite (RoomID, SpecialtyID)
+
+Foreign Keys: RoomID REFERENCES Rooms(RoomID) ON DELETE CASCADE ON UPDATE CASCADE, SpecialtyID REFERENCES Specialties(SpecialtyID) ON DELETE CASCADE ON UPDATE CASCADE
+
+Columns: IsDeleted (BOOLEAN DEFAULT 0), CreatedAt (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
+
+TrainerAvailability Table
+
+Primary Key: AvailabilityID (INT AUTO_INCREMENT)
+
+Foreign Keys: TrainerID REFERENCES Trainers(TrainerID) ON DELETE CASCADE ON UPDATE CASCADE, SpecialtyID REFERENCES Specialties(SpecialtyID) ON DELETE CASCADE ON UPDATE CASCADE
+
+Columns: DayOfWeek (VARCHAR(10) NOT NULL, CHECK: 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'), StartTime (TIME NOT NULL), IsBooked (BOOLEAN DEFAULT 0), IsDeleted (BOOLEAN DEFAULT 0), CreatedAt (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
+
+SessionBooking Table
+
+Primary Key: SessionID (INT AUTO_INCREMENT)
+
+Foreign Keys: TrainerID REFERENCES Trainers(TrainerID) ON DELETE CASCADE ON UPDATE CASCADE, ClientID REFERENCES Clients(ClientID) ON DELETE CASCADE ON UPDATE CASCADE, RoomID REFERENCES Rooms(RoomID) ON DELETE SET NULL ON UPDATE CASCADE, SpecialtyID REFERENCES Specialties(SpecialtyID) ON DELETE CASCADE ON UPDATE CASCADE
+
+Columns: SessionDate (DATE NOT NULL), StartTime (TIME NOT NULL), Status (VARCHAR(20) DEFAULT 'Pending', CHECK: 'Pending', 'Confirmed', 'Completed', 'Cancelled'), IsCancelled (BOOLEAN DEFAULT 0), BookingDate (TIMESTAMP DEFAULT CURRENT_TIMESTAMP), Price (DECIMAL(10,2) DEFAULT 0.00), IsDeleted (BOOLEAN DEFAULT 0), CreatedAt (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
+
+Payments Table
+
+Primary Key: PaymentID (INT AUTO_INCREMENT)
+
+Foreign Keys: ClientID REFERENCES Clients(ClientID) ON DELETE CASCADE ON UPDATE CASCADE, SessionID REFERENCES SessionBooking(SessionID) ON DELETE SET NULL ON UPDATE CASCADE
+
+Columns: Amount (DECIMAL(10,2) NOT NULL), Status (VARCHAR(20) DEFAULT 'Pending', CHECK: 'Pending', 'Completed', 'Failed'), TransactionDate (TIMESTAMP DEFAULT CURRENT_TIMESTAMP), IsDeleted (BOOLEAN DEFAULT 0), CreatedAt (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
+
+Database Editing Restrictions
+
+CRITICAL: Cursor is NOT allowed to edit anything about the database schema. This includes:
+
+- Cannot modify table structures (ALTER TABLE, DROP TABLE, CREATE TABLE modifications)
+
+- Cannot modify columns, data types, constraints, or foreign keys
+
+- Cannot modify existing data unless explicitly requested for testing purposes
+
+- Cannot delete any existing data or records that were not added by Cursor itself
+
+Limited Testing Permissions
+
+Cursor may only:
+
+- Add temporary test data that must be deleted immediately after testing
+
+- Delete only data that Cursor itself added (for cleanup after testing)
+
+- These permissions are strictly for temporary testing purposes only
+
 Project Structure Guidelines
 
 Keep frontend and backend in separate folders/directories
