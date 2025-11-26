@@ -1,0 +1,72 @@
+// Login form handling with database authentication
+
+document.addEventListener('DOMContentLoaded', () => {
+  const loginForm = document.getElementById('loginForm');
+  const errorMessage = document.getElementById('errorMessage');
+
+  loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Hide error message
+    errorMessage.classList.add('d-none');
+
+    // Validate form
+    if (!loginForm.checkValidity()) {
+      loginForm.classList.add('was-validated');
+      return;
+    }
+
+    // Get form data
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+
+    try {
+      // Call API to authenticate user
+      const response = await fetch('http://localhost:5176/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        // Authentication failed
+        throw new Error(data.message || 'Login failed. Please check your credentials and try again.');
+      }
+
+      // Login successful - show success message with role
+      const role = data.role || 'user';
+      const roleDisplay = role.charAt(0).toUpperCase() + role.slice(1);
+      const userName = data.firstName ? `${data.firstName} ${data.lastName}`.trim() : email;
+      
+      // Display success message
+      errorMessage.className = 'alert alert-success';
+      errorMessage.textContent = `Successfully logged in as a ${roleDisplay}. Welcome, ${userName}!`;
+      errorMessage.classList.remove('d-none');
+
+      // Clear form
+      loginForm.reset();
+      loginForm.classList.remove('was-validated');
+
+      // Note: In the future, you would redirect here:
+      // if (role === 'trainer') {
+      //   window.location.href = './trainer.html';
+      // } else if (role === 'client') {
+      //   window.location.href = './client.html';
+      // } else if (role === 'admin') {
+      //   window.location.href = './admin.html';
+      // }
+
+    } catch (error) {
+      // Display error message
+      errorMessage.className = 'alert alert-danger';
+      errorMessage.textContent = error.message || 'Login failed. Please check your credentials and try again.';
+      errorMessage.classList.remove('d-none');
+    }
+  });
+});
+
