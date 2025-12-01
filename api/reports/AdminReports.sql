@@ -78,7 +78,7 @@ ORDER BY sb.Status;
 SELECT p.Status AS PaymentStatus, COUNT(p.PaymentID) AS PaymentCount,
     IFNULL(SUM(p.Amount), 0.00) AS TotalAmount, ROUND(IFNULL(AVG(p.Amount), 0.00), 2) AS AveragePaymentAmount,
     ROUND((COUNT(p.PaymentID) / NULLIF((SELECT COUNT(*) FROM Payments WHERE IsDeleted = 0), 0)) * 100, 2) AS PercentageOfTotalPayments,
-    ROUND((COALESCE(SUM(p.Amount), 0.00) / NULLIF((SELECT COALESCE(SUM(Amount), 0.00) FROM Payments WHERE IsDeleted = 0), 0)) * 100, 2) AS PercentageOfTotalRevenue
+    ROUND((IFNULL(SUM(p.Amount), 0.00) / NULLIF((SELECT COALESCE(SUM(Amount), 0.00) FROM Payments WHERE IsDeleted = 0), 0)) * 100, 2) AS PercentageOfTotalRevenue
 FROM Payments p
 WHERE p.IsDeleted = 0
 GROUP BY p.Status

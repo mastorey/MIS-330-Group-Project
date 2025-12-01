@@ -752,6 +752,7 @@ namespace MyApp.Namespace
             try
             {
                 using var connection = _dbUtility.GetConnection();
+                // Note: Each session is 1 hour, so TotalHoursUtilized = TotalSessionsAssigned
                 string query = @"
                     SELECT r.RoomID, r.RoomNo, r.RoomName,
                         COUNT(sb.SessionID) AS TotalSessionsAssigned,
