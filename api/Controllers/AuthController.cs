@@ -196,8 +196,8 @@ namespace MyApp.Namespace
                 else if (normalizedUserType == "Trainer")
                 {
                     childTableQuery = @"
-                        INSERT INTO Trainers (TrainerID, Phone)
-                        VALUES (@userId, @phone)";
+                        INSERT INTO Trainers (TrainerID, Phone, Rate)
+                        VALUES (@userId, @phone, @rate)";
                 }
                 else if (normalizedUserType == "Admin")
                 {
@@ -219,6 +219,8 @@ namespace MyApp.Namespace
                     else if (normalizedUserType == "Trainer")
                     {
                         insertChildCommand.Parameters.AddWithValue("@phone", request.Phone ?? (object)DBNull.Value);
+                        decimal rateValue = request.Rate.HasValue && request.Rate.Value >= 0 ? request.Rate.Value : 0.00m;
+                        insertChildCommand.Parameters.AddWithValue("@rate", rateValue);
                     }
 
                     int childRowsAffected = insertChildCommand.ExecuteNonQuery();
@@ -297,7 +299,11 @@ namespace MyApp.Namespace
                         CASE 
                             WHEN u.UserType = 'Trainer' THEN t.Certification
                             ELSE NULL
-                        END AS Certification
+                        END AS Certification,
+                        CASE 
+                            WHEN u.UserType = 'Trainer' THEN COALESCE(t.Rate, 90.00)
+                            ELSE NULL
+                        END AS Rate
                     FROM Users u
                     LEFT JOIN Clients c ON u.UserID = c.ClientID AND u.UserType = 'Client'
                     LEFT JOIN Trainers t ON u.UserID = t.TrainerID AND u.UserType = 'Trainer'
@@ -319,6 +325,7 @@ namespace MyApp.Namespace
 
                 // Build response
                 int birthdayOrdinal = reader.GetOrdinal("Birthday");
+                int rateOrdinal = reader.GetOrdinal("Rate");
                 var profile = new
                 {
                     success = true,
@@ -328,7 +335,8 @@ namespace MyApp.Namespace
                     birthday = reader.IsDBNull(birthdayOrdinal) ? "" : reader.GetDateTime(birthdayOrdinal).ToString("yyyy-MM-dd"),
                     userType = reader.GetString("UserType"),
                     phone = reader.IsDBNull(reader.GetOrdinal("Phone")) ? null : reader.GetString("Phone"),
-                    certification = reader.IsDBNull(reader.GetOrdinal("Certification")) ? null : reader.GetString("Certification")
+                    certification = reader.IsDBNull(reader.GetOrdinal("Certification")) ? null : reader.GetString("Certification"),
+                    rate = reader.IsDBNull(rateOrdinal) ? (decimal?)null : reader.GetDecimal(rateOrdinal)
                 };
 
                 return Ok(profile);
@@ -454,15 +462,28 @@ namespace MyApp.Namespace
                     }
                 }
 
-                if (userType == "Trainer" && request.Certification != null)
+                if (userType == "Trainer")
                 {
-                    string updateCertQuery = "UPDATE Trainers SET Certification = @certification WHERE TrainerID = @userId";
-                    using var updateCertCommand = new MySqlCommand(updateCertQuery, connection);
-                    updateCertCommand.Parameters.AddWithValue("@certification", string.IsNullOrEmpty(request.Certification) 
-                        ? (object)DBNull.Value 
-                        : request.Certification.Trim());
-                    updateCertCommand.Parameters.AddWithValue("@userId", userId);
-                    updateCertCommand.ExecuteNonQuery();
+                    if (request.Certification != null)
+                    {
+                        string updateCertQuery = "UPDATE Trainers SET Certification = @certification WHERE TrainerID = @userId";
+                        using var updateCertCommand = new MySqlCommand(updateCertQuery, connection);
+                        updateCertCommand.Parameters.AddWithValue("@certification", string.IsNullOrEmpty(request.Certification) 
+                            ? (object)DBNull.Value 
+                            : request.Certification.Trim());
+                        updateCertCommand.Parameters.AddWithValue("@userId", userId);
+                        updateCertCommand.ExecuteNonQuery();
+                    }
+                    
+                    if (request.Rate.HasValue)
+                    {
+                        string updateRateQuery = "UPDATE Trainers SET Rate = @rate WHERE TrainerID = @userId";
+                        using var updateRateCommand = new MySqlCommand(updateRateQuery, connection);
+                        decimal rateValue = request.Rate.Value >= 0 ? request.Rate.Value : 0.00m;
+                        updateRateCommand.Parameters.AddWithValue("@rate", rateValue);
+                        updateRateCommand.Parameters.AddWithValue("@userId", userId);
+                        updateRateCommand.ExecuteNonQuery();
+                    }
                 }
 
                 return Ok(new
@@ -507,6 +528,7 @@ namespace MyApp.Namespace
         public string Birthday { get; set; } = string.Empty;
         public string UserType { get; set; } = string.Empty;
         public string? Phone { get; set; }
+        public decimal? Rate { get; set; }
     }
 
     public class ProfileUpdateRequest
@@ -518,6 +540,7 @@ namespace MyApp.Namespace
         public string? Password { get; set; }
         public string? Phone { get; set; }
         public string? Certification { get; set; }
+        public decimal? Rate { get; set; }
     }
 }
 

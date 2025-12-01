@@ -149,6 +149,23 @@
                   <small class="form-text text-muted">Format: ###-###-#### or 10 digits</small>
                 </div>
 
+                <!-- Rate per Hour -->
+                <div class="mb-3">
+                  <label for="rate" class="form-label">Rate per Hour ($) <span class="text-danger">*</span></label>
+                  <input
+                    type="number"
+                    class="form-control"
+                    id="rate"
+                    name="rate"
+                    placeholder="0.00"
+                    step="0.01"
+                    min="0"
+                    required
+                  />
+                  <div class="invalid-feedback">Please provide a valid rate (must be 0 or greater).</div>
+                  <small class="form-text text-muted">Set your hourly training rate</small>
+                </div>
+
                 <!-- Birthday -->
                 <div class="mb-3">
                   <label for="birthday" class="form-label">Birthday <span class="text-danger">*</span></label>
@@ -261,6 +278,14 @@
               <div class="mb-3" id="profileCertificationGroup" style="display: none;">
                 <label for="profileCertification" class="form-label">Certification</label>
                 <input type="text" class="form-control" id="profileCertification" placeholder="e.g., NASM-CPT, ACE-CPT" readonly />
+              </div>
+
+              <!-- Rate per Hour (Trainer only) -->
+              <div class="mb-3" id="profileRateGroup" style="display: none;">
+                <label for="profileRate" class="form-label">Rate per Hour ($)</label>
+                <input type="number" class="form-control" id="profileRate" step="0.01" min="0" placeholder="0.00" readonly />
+                <div class="invalid-feedback">Please provide a valid rate (must be 0 or greater).</div>
+                <small class="form-text text-muted">Your hourly training rate</small>
               </div>
 
               <!-- Password -->

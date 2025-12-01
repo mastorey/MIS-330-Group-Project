@@ -263,6 +263,14 @@
                 <input type="text" class="form-control" id="profileCertification" placeholder="e.g., NASM-CPT, ACE-CPT" readonly />
               </div>
 
+              <!-- Rate per Hour (Trainer only) -->
+              <div class="mb-3" id="profileRateGroup" style="display: none;">
+                <label for="profileRate" class="form-label">Rate per Hour ($)</label>
+                <input type="number" class="form-control" id="profileRate" step="0.01" min="0" placeholder="0.00" readonly />
+                <div class="invalid-feedback">Please provide a valid rate (must be 0 or greater).</div>
+                <small class="form-text text-muted">Your hourly training rate</small>
+              </div>
+
               <!-- Password -->
               <div class="mb-3" id="profilePasswordGroup">
                 <label for="profilePassword" class="form-label">New Password</label>

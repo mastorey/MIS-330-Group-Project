@@ -70,6 +70,19 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
 
+    // Validate rate field
+    const rateInput = document.getElementById('rate');
+    const rateValue = parseFloat(rateInput.value);
+    if (isNaN(rateValue) || rateValue < 0) {
+      rateInput.setCustomValidity('Please provide a valid rate (must be 0 or greater).');
+      rateInput.classList.add('is-invalid');
+      form.classList.add('was-validated');
+      return;
+    } else {
+      rateInput.setCustomValidity('');
+      rateInput.classList.remove('is-invalid');
+    }
+
     // If form is valid, prepare data for submission
     const formData = {
       FirstName: document.getElementById('firstName').value.trim(),
@@ -78,6 +91,7 @@ document.addEventListener('DOMContentLoaded', function() {
       Phone: document.getElementById('phone').value.trim(), // Store with dashes (123-456-7890)
       Birthday: document.getElementById('birthday').value,
       Password: password.value,
+      Rate: rateValue,
       UserType: 'trainer' // Will be normalized to "Trainer" on backend
     };
 

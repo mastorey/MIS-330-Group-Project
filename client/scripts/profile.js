@@ -143,8 +143,10 @@ async function loadUserProfileData() {
     const profileBirthday = document.getElementById('profileBirthday');
     const profilePhone = document.getElementById('profilePhone');
     const profileCertification = document.getElementById('profileCertification');
+    const profileRate = document.getElementById('profileRate');
     const profilePhoneGroup = document.getElementById('profilePhoneGroup');
     const profileCertificationGroup = document.getElementById('profileCertificationGroup');
+    const profileRateGroup = document.getElementById('profileRateGroup');
     const profilePasswordGroup = document.getElementById('profilePasswordGroup');
 
     // Show/hide fields based on user role FIRST (before setting values)
@@ -156,8 +158,10 @@ async function loadUserProfileData() {
 
     if (userRole === 'Trainer') {
       if (profileCertificationGroup) profileCertificationGroup.style.display = 'block';
+      if (profileRateGroup) profileRateGroup.style.display = 'block';
     } else {
       if (profileCertificationGroup) profileCertificationGroup.style.display = 'none';
+      if (profileRateGroup) profileRateGroup.style.display = 'none';
     }
 
     // Hide password field in read-only mode
@@ -170,7 +174,8 @@ async function loadUserProfileData() {
       email: data.email || userEmail || '',
       birthday: data.birthday || '',
       phone: data.phone || '',
-      certification: data.certification || ''
+      certification: data.certification || '',
+      rate: data.rate !== undefined && data.rate !== null ? parseFloat(data.rate) : 0.00
     };
     
     // NOW set all field values directly from API data (same pattern for all fields)
@@ -180,6 +185,7 @@ async function loadUserProfileData() {
     if (profileBirthday) profileBirthday.value = originalProfileValues.birthday;
     if (profilePhone) profilePhone.value = originalProfileValues.phone;
     if (profileCertification) profileCertification.value = originalProfileValues.certification;
+    if (profileRate) profileRate.value = originalProfileValues.rate.toFixed(2);
     
     // Ensure all fields are readonly initially
     switchToReadOnlyMode();
@@ -211,6 +217,7 @@ function switchToEditMode() {
   const profileBirthday = document.getElementById('profileBirthday');
   const profilePhone = document.getElementById('profilePhone');
   const profileCertification = document.getElementById('profileCertification');
+  const profileRate = document.getElementById('profileRate');
   const profilePassword = document.getElementById('profilePassword');
   const profilePasswordGroup = document.getElementById('profilePasswordGroup');
   const profileModalLabel = document.getElementById('profileModalLabel');
@@ -226,7 +233,8 @@ function switchToEditMode() {
     lastName: profileLastName ? profileLastName.value : '',
     birthday: profileBirthday ? profileBirthday.value : '',
     phone: profilePhone ? profilePhone.value : '',
-    certification: profileCertification ? profileCertification.value : ''
+    certification: profileCertification ? profileCertification.value : '',
+    rate: profileRate ? parseFloat(profileRate.value) || 0.00 : 0.00
   };
 
   // Enable all editable fields
@@ -235,6 +243,7 @@ function switchToEditMode() {
   if (profileBirthday) profileBirthday.removeAttribute('readonly');
   if (profilePhone) profilePhone.removeAttribute('readonly');
   if (profileCertification) profileCertification.removeAttribute('readonly');
+  if (profileRate) profileRate.removeAttribute('readonly');
   if (profilePassword) {
     profilePassword.removeAttribute('readonly');
     profilePassword.value = ''; // Clear password field when entering edit mode
@@ -264,6 +273,7 @@ function switchToReadOnlyMode() {
   const profileBirthday = document.getElementById('profileBirthday');
   const profilePhone = document.getElementById('profilePhone');
   const profileCertification = document.getElementById('profileCertification');
+  const profileRate = document.getElementById('profileRate');
   const profilePassword = document.getElementById('profilePassword');
   const profilePasswordGroup = document.getElementById('profilePasswordGroup');
   const profileModalLabel = document.getElementById('profileModalLabel');
@@ -290,6 +300,9 @@ function switchToReadOnlyMode() {
   if (profileCertification) {
     profileCertification.value = originalProfileValues.certification || '';
   }
+  if (profileRate) {
+    profileRate.value = (originalProfileValues.rate || 0.00).toFixed(2);
+  }
   if (profilePassword) {
     profilePassword.value = '';
   }
@@ -301,6 +314,7 @@ function switchToReadOnlyMode() {
   if (profileBirthday) profileBirthday.setAttribute('readonly', 'readonly');
   if (profilePhone) profilePhone.setAttribute('readonly', 'readonly');
   if (profileCertification) profileCertification.setAttribute('readonly', 'readonly');
+  if (profileRate) profileRate.setAttribute('readonly', 'readonly');
   if (profilePassword) profilePassword.setAttribute('readonly', 'readonly');
 
   // Hide password field in read-only mode
@@ -353,6 +367,11 @@ async function handleProfileSubmit(event) {
 
   if (userRole === 'Trainer') {
     formData.certification = document.getElementById('profileCertification').value.trim() || null;
+    const rateInput = document.getElementById('profileRate');
+    if (rateInput) {
+      const rateValue = parseFloat(rateInput.value);
+      formData.rate = isNaN(rateValue) || rateValue < 0 ? null : rateValue;
+    }
   }
 
   try {
@@ -396,7 +415,8 @@ async function handleProfileSubmit(event) {
         lastName: formData.lastName,
         birthday: formData.birthday,
         phone: formData.phone || '',
-        certification: formData.certification || ''
+        certification: formData.certification || '',
+        rate: formData.rate !== undefined && formData.rate !== null ? parseFloat(formData.rate) : (originalProfileValues.rate || 0.00)
       };
       
       // Update profile image

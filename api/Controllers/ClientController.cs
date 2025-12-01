@@ -443,8 +443,20 @@ namespace MyApp.Namespace
                 int trainerId = checkReader.GetInt32("TrainerID");
                 int specialtyId = checkReader.GetInt32("SpecialtyID");
                 TimeSpan startTime = checkReader.GetTimeSpan("StartTime");
-                decimal price = 0.00m; // Default price, can be updated later if needed
                 checkReader.Close();
+
+                // Get trainer's rate from Trainers table
+                decimal price = 0.00m; // Default price
+                string getRateQuery = "SELECT Rate FROM Trainers WHERE TrainerID = @trainerId AND IsDeleted = 0";
+                using (var rateCommand = new MySqlCommand(getRateQuery, connection))
+                {
+                    rateCommand.Parameters.AddWithValue("@trainerId", trainerId);
+                    var rateResult = rateCommand.ExecuteScalar();
+                    if (rateResult != null && rateResult != DBNull.Value)
+                    {
+                        price = Convert.ToDecimal(rateResult);
+                    }
+                }
 
                 // Parse calculated date
                 if (!DateTime.TryParse(request.CalculatedDate, out DateTime sessionDate))
