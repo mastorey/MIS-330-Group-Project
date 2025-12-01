@@ -1,0 +1,55 @@
+# .NET Build Artifacts
+bin/
+obj/
+*.dll
+*.pdb
+*.cache
+*.sourcelink.json
+*.AssemblyInfo.cs
+*.AssemblyInfoInputs.cache
+*.csproj.CoreCompileInputs.cache
+*.csproj.nuget.dgspec.json
+*.csproj.nuget.g.props
+*.csproj.nuget.g.targets
+*.deps.json
+*.runtimeconfig.json
+*.staticwebassets.endpoints.json
+apphost
+*.pdb
+*.dll
+
+# Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio cache/options
+.vs/
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Rider
+.idea/
+
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# OS files
+.DS_Store
+Thumbs.db
+
