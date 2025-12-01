@@ -37,11 +37,18 @@ function updateNavbarAuthState() {
   const profileImageNav = document.getElementById('profileImageNav');
   const logoutNav = document.getElementById('logoutNav');
   const trainerPortalNavItem = document.getElementById('trainerPortalNavItem');
+  const clientPortalNavItem = document.getElementById('clientPortalNavItem');
+  const findTrainersNav = document.getElementById('findTrainersNav');
+  const mySessionsNav = document.getElementById('mySessionsNav');
 
   if (isAuthenticated) {
     // Hide login/create account
     if (createAccountNav) createAccountNav.style.display = 'none';
     if (loginNav) loginNav.style.display = 'none';
+    
+    // Hide default nav items (Find Trainers, My Sessions)
+    if (findTrainersNav) findTrainersNav.style.display = 'none';
+    if (mySessionsNav) mySessionsNav.style.display = 'none';
     
     // Show profile image and logout
     if (profileImageNav) profileImageNav.style.display = 'block';
@@ -50,10 +57,13 @@ function updateNavbarAuthState() {
     // Update profile image initials
     updateProfileImage();
     
-    // Show Trainer Portal link if trainer
+    // Show portal links based on user role
     const userRole = localStorage.getItem('userRole');
-    if (trainerPortalNavItem && userRole === 'Trainer') {
-      trainerPortalNavItem.style.display = 'block';
+    if (trainerPortalNavItem) {
+      trainerPortalNavItem.style.display = (userRole === 'Trainer') ? 'block' : 'none';
+    }
+    if (clientPortalNavItem) {
+      clientPortalNavItem.style.display = (userRole === 'Client') ? 'block' : 'none';
     }
   } else {
     // Show login/create account
@@ -64,8 +74,13 @@ function updateNavbarAuthState() {
     if (profileImageNav) profileImageNav.style.display = 'none';
     if (logoutNav) logoutNav.style.display = 'none';
     
-    // Hide Trainer Portal link
+    // Hide portal links
     if (trainerPortalNavItem) trainerPortalNavItem.style.display = 'none';
+    if (clientPortalNavItem) clientPortalNavItem.style.display = 'none';
+    
+    // Hide default nav items when not logged in (they're not in simplified navbar)
+    if (findTrainersNav) findTrainersNav.style.display = 'none';
+    if (mySessionsNav) mySessionsNav.style.display = 'none';
   }
 }
 
