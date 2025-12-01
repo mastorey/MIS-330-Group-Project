@@ -112,7 +112,7 @@
           </button>
         </li>
         <li class="nav-item" role="presentation">
-          <button class="nav-link" id="reports-tab" data-bs-toggle="tab" data-bs-target="#reportsTab" type="button" role="tab" aria-controls="reportsTab" aria-selected="false">
+          <button class="nav-link" id="reports-tab" data-bs-toggle="tab" data-bs-target="#reportsTab" type="button" role="tab" aria-controls="reportsTab" aria-selected="false" onclick="loadReport(currentReportId || 'specialty-performance')">
             Reports
           </button>
         </li>
@@ -125,7 +125,6 @@
           <div class="card shadow-sm">
             <div class="card-body">
               <h5 class="card-title mb-4">Room Assignment</h5>
-              <p class="card-text text-muted mb-3">Assign rooms to sessions that haven't been assigned yet. Only rooms compatible with the session's specialty and available at the session time will be shown.</p>
               <!-- Unassigned sessions data will be displayed here -->
               <div id="unassignedSessionsData" class="mt-3">
                 <p class="text-white">Loading unassigned sessions...</p>
@@ -139,7 +138,6 @@
           <div class="card shadow-sm">
             <div class="card-body">
               <h5 class="card-title mb-4">All Sessions</h5>
-              <p class="card-text text-muted mb-3">View all session bookings with complete details including room assignments, payment status, and booking information.</p>
               <!-- All sessions data will be displayed here -->
               <div id="allSessionsData" class="mt-3">
                 <p class="text-white">Loading all sessions...</p>
@@ -152,10 +150,66 @@
         <div class="tab-pane fade" id="reportsTab" role="tabpanel" aria-labelledby="reports-tab">
           <div class="card shadow-sm">
             <div class="card-body">
-              <h5 class="card-title mb-4">Reports</h5>
-              <p class="card-text text-muted mb-3">Reports functionality will be available here in a future update.</p>
-              <div class="alert alert-info">
-                <p class="mb-0">Reports feature coming soon.</p>
+              <div class="d-flex justify-content-between align-items-center mb-4">
+                <h5 class="card-title mb-0">Business Reports</h5>
+                <button class="btn btn-sm btn-primary" onclick="loadReport(currentReportId)" id="refreshReportBtn">
+                  <span>🔄</span> Refresh
+                </button>
+              </div>
+              
+              <!-- Report Selector -->
+              <div class="mb-4">
+                <label for="reportSelector" class="form-label">Select Report</label>
+                <select class="form-select" id="reportSelector" onchange="loadReport(this.value)">
+                  <option value="specialty-performance">Specialty Performance</option>
+                  <option value="trainer-performance">Trainer Performance</option>
+                  <option value="revenue-trends">Revenue Trends</option>
+                  <option value="client-activity">Client Activity</option>
+                  <option value="room-utilization">Room Utilization</option>
+                  <option value="booking-status">Booking Status</option>
+                  <option value="payment-status">Payment Status</option>
+                  <option value="trainer-utilization">Trainer Utilization</option>
+                  <option value="session-completion">Session Completion</option>
+                </select>
+              </div>
+
+              <!-- Loading Indicator -->
+              <div id="reportLoading" class="text-center py-5" style="display: none;">
+                <div class="spinner-border text-primary" role="status">
+                  <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-3 text-muted">Loading report data...</p>
+              </div>
+
+              <!-- Error Message -->
+              <div id="reportError" class="alert alert-danger" style="display: none;">
+                <p class="mb-0" id="reportErrorMessage"></p>
+              </div>
+
+              <!-- Report Display Area -->
+              <div id="reportDisplay" style="display: none;">
+                <!-- Chart Container -->
+                <div class="mb-4">
+                  <div class="card">
+                    <div class="card-body">
+                      <h6 class="card-subtitle mb-3 text-muted" id="reportTitle"></h6>
+                      <canvas id="reportChart" height="100"></canvas>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Data Table -->
+                <div class="card">
+                  <div class="card-body">
+                    <h6 class="card-subtitle mb-3 text-muted">Data Table</h6>
+                    <div class="table-responsive">
+                      <table class="table table-dark table-striped table-hover" id="reportTable">
+                        <thead id="reportTableHead"></thead>
+                        <tbody id="reportTableBody"></tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -170,6 +224,9 @@
       integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
       crossorigin="anonymous"
     ></script>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
     <!-- Profile Modal -->
     <div class="modal fade" id="profileModal" tabindex="-1" aria-labelledby="profileModalLabel" aria-hidden="true">

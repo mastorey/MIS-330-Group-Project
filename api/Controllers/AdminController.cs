@@ -36,7 +36,7 @@ namespace MyApp.Namespace
             {
                 using var connection = _dbUtility.GetConnection();
                 
-                // Query unassigned sessions (where RoomID IS NULL)
+                // Query unassigned sessions (where RoomID IS NULL and Status is not Cancelled)
                 string query = @"
                     SELECT 
                         sb.SessionID,
@@ -55,6 +55,7 @@ namespace MyApp.Namespace
                     INNER JOIN Users uc ON c.ClientID = uc.UserID
                     INNER JOIN Specialties s ON sb.SpecialtyID = s.SpecialtyID
                     WHERE sb.RoomID IS NULL
+                    AND sb.Status != 'Cancelled'
                     AND sb.IsDeleted = 0
                     AND t.IsDeleted = 0
                     AND c.IsDeleted = 0
@@ -604,6 +605,369 @@ namespace MyApp.Namespace
                 {
                     success = false,
                     message = "An error occurred while unassigning room",
+                    error = ex.Message
+                });
+            }
+        }
+
+        [HttpGet("reports/specialty-performance")]
+        public IActionResult GetSpecialtyPerformanceReport([FromQuery] string email)
+        {
+            if (string.IsNullOrEmpty(email) || !IsAdmin(email))
+            {
+                return Forbid("Only admins can access this endpoint");
+            }
+
+            try
+            {
+                using var connection = _dbUtility.GetConnection();
+                string query = @"
+                    SELECT s.SpecialtyID, s.SpecialtyName,
+                        IF(COUNT(sb.SessionID) > 0, 'Yes', 'No') AS HasBookings,
+                        COUNT(sb.SessionID) AS TotalSessionsBooked,
+                        IFNULL(SUM(sb.Price), 0.00) AS TotalRevenue,
+                        ROUND(IFNULL(AVG(sb.Price), 0.00), 2) AS AverageSessionPrice
+                    FROM Specialties s
+                    LEFT JOIN SessionBooking sb ON s.SpecialtyID = sb.SpecialtyID AND sb.IsDeleted = 0
+                    WHERE s.IsDeleted = 0
+                    GROUP BY s.SpecialtyID, s.SpecialtyName
+                    ORDER BY TotalRevenue DESC";
+
+                return ExecuteReportQuery(connection, query, "Specialty Performance");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpGet("reports/trainer-performance")]
+        public IActionResult GetTrainerPerformanceReport([FromQuery] string email)
+        {
+            if (string.IsNullOrEmpty(email) || !IsAdmin(email))
+            {
+                return Forbid("Only admins can access this endpoint");
+            }
+
+            try
+            {
+                using var connection = _dbUtility.GetConnection();
+                string query = @"
+                    SELECT u.UserID AS TrainerID, CONCAT(u.FirstName, ' ', u.LastName) AS TrainerName,
+                        u.Email AS TrainerEmail, COALESCE(t.Rate, 0.00) AS AverageRatePerHour,
+                        COUNT(sb.SessionID) AS TotalSessionsBooked, COUNT(CASE WHEN sb.Status = 'Completed' THEN 1 END) AS CompletedSessions,
+                        CASE 
+                            WHEN COUNT(sb.SessionID) > 0 
+                            THEN ROUND((COUNT(CASE WHEN sb.Status = 'Completed' THEN 1 END) / COUNT(sb.SessionID)) * 100, 2)
+                            ELSE 0.00
+                        END AS CompletionRate,
+                        IFNULL(SUM(sb.Price), 0.00) AS TotalRevenue,
+                        ROUND(IFNULL(AVG(sb.Price), 0.00),2) AS AverageSessionPrice
+                    FROM Users u
+                    JOIN Trainers t ON u.UserID = t.TrainerID
+                    LEFT JOIN SessionBooking sb ON t.TrainerID = sb.TrainerID AND sb.IsDeleted = 0
+                    WHERE u.UserType = 'Trainer' AND u.IsDeleted = 0 AND t.IsDeleted = 0
+                    GROUP BY u.UserID, u.FirstName, u.LastName, u.Email, t.Rate
+                    ORDER BY TotalRevenue DESC";
+
+                return ExecuteReportQuery(connection, query, "Trainer Performance");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpGet("reports/revenue-trends")]
+        public IActionResult GetRevenueTrendsReport([FromQuery] string email)
+        {
+            if (string.IsNullOrEmpty(email) || !IsAdmin(email))
+            {
+                return Forbid("Only admins can access this endpoint");
+            }
+
+            try
+            {
+                using var connection = _dbUtility.GetConnection();
+                string query = @"
+                    SELECT 
+                        DATE_FORMAT(sb.SessionDate, '%Y-%m') AS YearMonth,
+                        COUNT(sb.SessionID) AS TotalSessions,
+                        IFNULL(SUM(sb.Price), 0.00) AS TotalRevenue,
+                        ROUND(IFNULL(AVG(sb.Price), 0.00), 2) AS AverageSessionPrice
+                    FROM SessionBooking sb
+                    WHERE sb.IsDeleted = 0
+                    GROUP BY DATE_FORMAT(sb.SessionDate, '%Y-%m')
+                    ORDER BY YearMonth DESC";
+
+                return ExecuteReportQuery(connection, query, "Revenue Trends");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpGet("reports/client-activity")]
+        public IActionResult GetClientActivityReport([FromQuery] string email)
+        {
+            if (string.IsNullOrEmpty(email) || !IsAdmin(email))
+            {
+                return Forbid("Only admins can access this endpoint");
+            }
+
+            try
+            {
+                using var connection = _dbUtility.GetConnection();
+                string query = @"
+                    SELECT u.UserID AS ClientID, CONCAT(u.FirstName, ' ', u.LastName) AS ClientName,
+                        u.Email AS ClientEmail, DATE_FORMAT(c.JoinDate, '%Y-%m-%d') AS JoinDate,
+                        COUNT(sb.SessionID) AS TotalSessionsBooked,
+                        COALESCE(SUM(sb.Price), 0.00) AS TotalAmountSpent,
+                        COALESCE(AVG(sb.Price), 0.00) AS AverageSessionPrice,
+                        MAX(sb.BookingDate) AS MostRecentBookingDate
+                    FROM Users u
+                    JOIN Clients c ON u.UserID = c.ClientID
+                    LEFT JOIN SessionBooking sb ON c.ClientID = sb.ClientID AND sb.IsDeleted = 0
+                    WHERE u.UserType = 'Client' AND u.IsDeleted = 0 AND c.IsDeleted = 0
+                    GROUP BY u.UserID, u.FirstName, u.LastName, u.Email, c.JoinDate
+                    ORDER BY TotalAmountSpent DESC";
+
+                return ExecuteReportQuery(connection, query, "Client Activity");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpGet("reports/room-utilization")]
+        public IActionResult GetRoomUtilizationReport([FromQuery] string email)
+        {
+            if (string.IsNullOrEmpty(email) || !IsAdmin(email))
+            {
+                return Forbid("Only admins can access this endpoint");
+            }
+
+            try
+            {
+                using var connection = _dbUtility.GetConnection();
+                string query = @"
+                    SELECT r.RoomID, r.RoomNo, r.RoomName,
+                        COUNT(sb.SessionID) AS TotalSessionsAssigned,
+                        COUNT(sb.SessionID) AS TotalHoursUtilized,
+                        IFNULL(SUM(sb.Price), 0.00) AS RevenueGenerated
+                    FROM Rooms r
+                    LEFT JOIN SessionBooking sb ON r.RoomID = sb.RoomID AND sb.IsDeleted = 0
+                    WHERE r.IsDeleted = 0
+                    GROUP BY r.RoomID, r.RoomNo, r.RoomName
+                    ORDER BY TotalSessionsAssigned DESC";
+
+                return ExecuteReportQuery(connection, query, "Room Utilization");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpGet("reports/booking-status")]
+        public IActionResult GetBookingStatusReport([FromQuery] string email)
+        {
+            if (string.IsNullOrEmpty(email) || !IsAdmin(email))
+            {
+                return Forbid("Only admins can access this endpoint");
+            }
+
+            try
+            {
+                using var connection = _dbUtility.GetConnection();
+                string query = @"
+                    SELECT sb.Status, COUNT(sb.SessionID) AS SessionCount,
+                        IFNULL(SUM(sb.Price), 0.00) AS TotalRevenue,
+                        ROUND((COUNT(sb.SessionID) / (SELECT COUNT(*) FROM SessionBooking WHERE IsDeleted = 0)) * 100, 2) AS PercentageOfTotalSessions,
+                        ROUND((IFNULL(SUM(sb.Price), 0.00) / NULLIF((SELECT IFNULL(SUM(Price), 0.00) FROM SessionBooking WHERE IsDeleted = 0), 0)) * 100, 2) AS PercentageOfTotalRevenue
+                    FROM SessionBooking sb
+                    WHERE sb.IsDeleted = 0
+                    GROUP BY sb.Status
+                    ORDER BY sb.Status";
+
+                return ExecuteReportQuery(connection, query, "Booking Status");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpGet("reports/payment-status")]
+        public IActionResult GetPaymentStatusReport([FromQuery] string email)
+        {
+            if (string.IsNullOrEmpty(email) || !IsAdmin(email))
+            {
+                return Forbid("Only admins can access this endpoint");
+            }
+
+            try
+            {
+                using var connection = _dbUtility.GetConnection();
+                string query = @"
+                    SELECT p.Status AS PaymentStatus, COUNT(p.PaymentID) AS PaymentCount,
+                        IFNULL(SUM(p.Amount), 0.00) AS TotalAmount, ROUND(IFNULL(AVG(p.Amount), 0.00), 2) AS AveragePaymentAmount,
+                        ROUND((COUNT(p.PaymentID) / NULLIF((SELECT COUNT(*) FROM Payments WHERE IsDeleted = 0), 0)) * 100, 2) AS PercentageOfTotalPayments,
+                        ROUND((COALESCE(SUM(p.Amount), 0.00) / NULLIF((SELECT COALESCE(SUM(Amount), 0.00) FROM Payments WHERE IsDeleted = 0), 0)) * 100, 2) AS PercentageOfTotalRevenue
+                    FROM Payments p
+                    WHERE p.IsDeleted = 0
+                    GROUP BY p.Status
+                    ORDER BY PaymentStatus";
+
+                return ExecuteReportQuery(connection, query, "Payment Status");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpGet("reports/trainer-utilization")]
+        public IActionResult GetTrainerUtilizationReport([FromQuery] string email)
+        {
+            if (string.IsNullOrEmpty(email) || !IsAdmin(email))
+            {
+                return Forbid("Only admins can access this endpoint");
+            }
+
+            try
+            {
+                using var connection = _dbUtility.GetConnection();
+                string query = @"
+                    SELECT 
+                        u.UserID AS TrainerID,
+                        CONCAT(u.FirstName, ' ', u.LastName) AS TrainerName,
+                        COUNT(DISTINCT ta.AvailabilityID) AS TotalAvailabilitySlots,
+                        COUNT(sb.SessionID) AS TotalBookedSessions,
+                        CASE 
+                            WHEN COUNT(DISTINCT ta.AvailabilityID) > 0 
+                            THEN ROUND((COUNT(sb.SessionID) / COUNT(DISTINCT ta.AvailabilityID)) * 100, 2)
+                            ELSE 0.00
+                        END AS UtilizationRate,
+                        IFNULL(SUM(sb.Price), 0.00) AS RevenueGenerated
+                    FROM Users u
+                    JOIN Trainers t ON u.UserID = t.TrainerID
+                    LEFT JOIN TrainerAvailability ta ON t.TrainerID = ta.TrainerID AND ta.IsDeleted = 0
+                    LEFT JOIN SessionBooking sb ON t.TrainerID = sb.TrainerID AND sb.IsDeleted = 0
+                    WHERE u.UserType = 'Trainer' AND u.IsDeleted = 0 AND t.IsDeleted = 0
+                    GROUP BY u.UserID, u.FirstName, u.LastName
+                    ORDER BY UtilizationRate DESC";
+
+                return ExecuteReportQuery(connection, query, "Trainer Utilization");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpGet("reports/session-completion")]
+        public IActionResult GetSessionCompletionReport([FromQuery] string email)
+        {
+            if (string.IsNullOrEmpty(email) || !IsAdmin(email))
+            {
+                return Forbid("Only admins can access this endpoint");
+            }
+
+            try
+            {
+                using var connection = _dbUtility.GetConnection();
+                string query = @"
+                    SELECT 
+                        'Overall' AS Category,
+                        'All Sessions' AS SubCategory,
+                        COUNT(sb.SessionID) AS TotalSessions,
+                        COUNT(CASE WHEN sb.Status = 'Completed' THEN 1 END) AS CompletedSessions,
+                        COUNT(CASE WHEN sb.Status = 'Cancelled' THEN 1 END) AS CancelledSessions,
+                        ROUND((COUNT(CASE WHEN sb.Status = 'Completed' THEN 1 END) / NULLIF(COUNT(sb.SessionID), 0)) * 100, 2) AS CompletionRate,
+                        ROUND((COUNT(CASE WHEN sb.Status = 'Cancelled' THEN 1 END) / NULLIF(COUNT(sb.SessionID), 0)) * 100, 2) AS CancellationRate,
+                        IFNULL(SUM(CASE WHEN sb.Status = 'Cancelled' THEN sb.Price ELSE 0 END), 0.00) AS RevenueLostFromCancellations
+                    FROM SessionBooking sb
+                    WHERE sb.IsDeleted = 0
+
+                    UNION ALL
+
+                    SELECT 
+                        'By Specialty' AS Category,
+                        s.SpecialtyName AS SubCategory,
+                        COUNT(sb.SessionID) AS TotalSessions,
+                        COUNT(CASE WHEN sb.Status = 'Completed' THEN 1 END) AS CompletedSessions,
+                        COUNT(CASE WHEN sb.Status = 'Cancelled' THEN 1 END) AS CancelledSessions,
+                        ROUND((COUNT(CASE WHEN sb.Status = 'Completed' THEN 1 END) / NULLIF(COUNT(sb.SessionID), 0)) * 100, 2) AS CompletionRate,
+                        ROUND((COUNT(CASE WHEN sb.Status = 'Cancelled' THEN 1 END) / NULLIF(COUNT(sb.SessionID), 0)) * 100, 2) AS CancellationRate,
+                        IFNULL(SUM(CASE WHEN sb.Status = 'Cancelled' THEN sb.Price ELSE 0 END), 0.00) AS RevenueLostFromCancellations
+                    FROM SessionBooking sb
+                    JOIN Specialties s ON sb.SpecialtyID = s.SpecialtyID
+                    WHERE sb.IsDeleted = 0 AND s.IsDeleted = 0
+                    GROUP BY s.SpecialtyName
+
+                    UNION ALL
+
+                    SELECT 
+                        'By Trainer' AS Category,
+                        CONCAT(u.FirstName, ' ', u.LastName) AS SubCategory,
+                        COUNT(sb.SessionID) AS TotalSessions,
+                        COUNT(CASE WHEN sb.Status = 'Completed' THEN 1 END) AS CompletedSessions,
+                        COUNT(CASE WHEN sb.Status = 'Cancelled' THEN 1 END) AS CancelledSessions,
+                        ROUND((COUNT(CASE WHEN sb.Status = 'Completed' THEN 1 END) / NULLIF(COUNT(sb.SessionID), 0)) * 100, 2) AS CompletionRate,
+                        ROUND((COUNT(CASE WHEN sb.Status = 'Cancelled' THEN 1 END) / NULLIF(COUNT(sb.SessionID), 0)) * 100, 2) AS CancellationRate,
+                        IFNULL(SUM(CASE WHEN sb.Status = 'Cancelled' THEN sb.Price ELSE 0 END), 0.00) AS RevenueLostFromCancellations
+                    FROM SessionBooking sb JOIN Trainers t ON sb.TrainerID = t.TrainerID
+                    JOIN Users u ON t.TrainerID = u.UserID
+                    WHERE sb.IsDeleted = 0 AND t.IsDeleted = 0 AND u.IsDeleted = 0
+                    GROUP BY u.UserID, u.FirstName, u.LastName
+                    ORDER BY Category, CompletionRate DESC";
+
+                return ExecuteReportQuery(connection, query, "Session Completion");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { success = false, message = ex.Message });
+            }
+        }
+
+        // Helper method to execute report queries and return formatted results
+        private IActionResult ExecuteReportQuery(MySqlConnection connection, string query, string reportName)
+        {
+            try
+            {
+                using var command = new MySqlCommand(query, connection);
+                using var reader = command.ExecuteReader();
+                
+                var reportData = new List<Dictionary<string, object>>();
+                
+                while (reader.Read())
+                {
+                    var row = new Dictionary<string, object>();
+                    for (int i = 0; i < reader.FieldCount; i++)
+                    {
+                        string fieldName = reader.GetName(i);
+                        object value = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                        row[fieldName] = value;
+                    }
+                    reportData.Add(row);
+                }
+                
+                return Ok(new
+                {
+                    success = true,
+                    reportName = reportName,
+                    data = reportData
+                });
+            }
+            catch (MySqlException ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "Database error occurred",
                     error = ex.Message
                 });
             }

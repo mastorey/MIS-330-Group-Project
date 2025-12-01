@@ -19,6 +19,9 @@ function initializeAdminPage() {
   // Check if admin is signed in
   checkAdminAuth();
   
+  // Initialize reports
+  initializeReports();
+  
   // Load admin data for active tab
   loadAdminData();
 }
@@ -396,12 +399,25 @@ function getPaymentStatusBadge(status) {
  * Format date from YYYY-MM-DD to MM/DD/YYYY
  */
 function formatDate(dateString) {
-  if (!dateString) return 'N/A';
-  const date = new Date(dateString + 'T00:00:00');
-  const month = (date.getMonth() + 1).toString().padStart(2, '0');
-  const day = date.getDate().toString().padStart(2, '0');
-  const year = date.getFullYear();
-  return `${month}/${day}/${year}`;
+  if (!dateString || dateString === 'null' || dateString === null || dateString === undefined) return 'N/A';
+  
+  // Handle MySQL DATE format (YYYY-MM-DD)
+  if (typeof dateString === 'string' && dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    const [year, month, day] = dateString.split('-');
+    return `${month}/${day}/${year}`;
+  }
+  
+  // Try to parse as Date object
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return 'N/A';
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    const year = date.getFullYear();
+    return `${month}/${day}/${year}`;
+  } catch (e) {
+    return 'N/A';
+  }
 }
 
 /**
@@ -489,9 +505,717 @@ async function unassignRoom(sessionId) {
   }
 }
 
+// ============================================================================
+// Reports Dashboard Functions
+// ============================================================================
+
+let currentReportId = 'specialty-performance';
+let currentChart = null;
+
+/**
+ * Initialize reports tab
+ */
+function initializeReports() {
+  // Set default report selector
+  const reportSelector = document.getElementById('reportSelector');
+  if (reportSelector) {
+    reportSelector.value = currentReportId;
+  }
+  
+  const reportsTab = document.getElementById('reportsTab');
+  if (reportsTab) {
+    // Load default report when tab is shown
+    const reportsTabButton = document.getElementById('reports-tab');
+    if (reportsTabButton) {
+      reportsTabButton.addEventListener('shown.bs.tab', function() {
+        loadReport(currentReportId);
+      });
+    }
+  }
+}
+
+/**
+ * Load a specific report
+ */
+async function loadReport(reportId) {
+  currentReportId = reportId;
+  
+  const userEmail = localStorage.getItem('userEmail');
+  if (!userEmail) {
+    showReportError('Please log in to view reports.');
+    return;
+  }
+
+  // Show loading, hide error and display
+  document.getElementById('reportLoading').style.display = 'block';
+  document.getElementById('reportError').style.display = 'none';
+  document.getElementById('reportDisplay').style.display = 'none';
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/admin/reports/${reportId}?email=${encodeURIComponent(userEmail)}`);
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch report data');
+    }
+    
+    const result = await response.json();
+    
+    if (!result.success) {
+      throw new Error(result.message || 'Failed to load report');
+    }
+    
+    // Hide loading, show display
+    document.getElementById('reportLoading').style.display = 'none';
+    document.getElementById('reportDisplay').style.display = 'block';
+    
+    // Render report
+    renderReport(reportId, result.data, result.reportName);
+    
+  } catch (error) {
+    console.error('Error loading report:', error);
+    showReportError('Error loading report data. Please try again later.');
+    document.getElementById('reportLoading').style.display = 'none';
+  }
+}
+
+/**
+ * Show report error message
+ */
+function showReportError(message) {
+  document.getElementById('reportError').style.display = 'block';
+  document.getElementById('reportErrorMessage').textContent = message;
+  document.getElementById('reportLoading').style.display = 'none';
+  document.getElementById('reportDisplay').style.display = 'none';
+}
+
+/**
+ * Render report with chart and table
+ */
+function renderReport(reportId, data, reportName) {
+  if (!data || data.length === 0) {
+    showReportError('No data available for this report.');
+    return;
+  }
+
+  // Set report title
+  document.getElementById('reportTitle').textContent = reportName;
+
+  // Destroy existing chart
+  if (currentChart) {
+    currentChart.destroy();
+    currentChart = null;
+  }
+
+  // Render chart and table based on report type
+  switch (reportId) {
+    case 'specialty-performance':
+      renderSpecialtyPerformanceReport(data);
+      break;
+    case 'trainer-performance':
+      renderTrainerPerformanceReport(data);
+      break;
+    case 'revenue-trends':
+      renderRevenueTrendsReport(data);
+      break;
+    case 'client-activity':
+      renderClientActivityReport(data);
+      break;
+    case 'room-utilization':
+      renderRoomUtilizationReport(data);
+      break;
+    case 'booking-status':
+      renderBookingStatusReport(data);
+      break;
+    case 'payment-status':
+      renderPaymentStatusReport(data);
+      break;
+    case 'trainer-utilization':
+      renderTrainerUtilizationReport(data);
+      break;
+    case 'session-completion':
+      renderSessionCompletionReport(data);
+      break;
+    default:
+      showReportError('Unknown report type.');
+  }
+}
+
+/**
+ * Render Specialty Performance Report
+ */
+function renderSpecialtyPerformanceReport(data) {
+  const labels = data.map(row => row.SpecialtyName);
+  const revenues = data.map(row => parseFloat(row.TotalRevenue || 0));
+  
+  // Chart
+  const ctx = document.getElementById('reportChart').getContext('2d');
+  currentChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Total Revenue ($)',
+        data: revenues,
+        backgroundColor: 'rgba(54, 162, 235, 0.6)',
+        borderColor: 'rgba(54, 162, 235, 1)',
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { display: true },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              return 'Revenue: $' + context.parsed.y.toFixed(2);
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: {
+            callback: function(value) {
+              return '$' + value.toFixed(2);
+            }
+          }
+        }
+      }
+    }
+  });
+
+  // Table
+  const headers = ['Specialty Name', 'Has Bookings', 'Total Sessions', 'Total Revenue', 'Avg Session Price'];
+  const rows = data.map(row => [
+    row.SpecialtyName,
+    row.HasBookings,
+    row.TotalSessionsBooked,
+    formatCurrency(row.TotalRevenue),
+    formatCurrency(row.AverageSessionPrice)
+  ]);
+  renderTable(headers, rows);
+}
+
+/**
+ * Render Trainer Performance Report
+ */
+function renderTrainerPerformanceReport(data) {
+  const labels = data.map(row => row.TrainerName);
+  const revenues = data.map(row => parseFloat(row.TotalRevenue || 0));
+  
+  const ctx = document.getElementById('reportChart').getContext('2d');
+  currentChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Total Revenue ($)',
+        data: revenues,
+        backgroundColor: 'rgba(75, 192, 192, 0.6)',
+        borderColor: 'rgba(75, 192, 192, 1)',
+        borderWidth: 1
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { display: true },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              return 'Revenue: $' + context.parsed.x.toFixed(2);
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          ticks: {
+            callback: function(value) {
+              return '$' + value.toFixed(2);
+            }
+          }
+        }
+      }
+    }
+  });
+
+  const headers = ['Trainer Name', 'Email', 'Rate/Hour', 'Sessions', 'Completed', 'Completion Rate', 'Revenue', 'Avg Price'];
+  const rows = data.map(row => [
+    row.TrainerName,
+    row.TrainerEmail,
+    formatCurrency(row.AverageRatePerHour),
+    row.TotalSessionsBooked,
+    row.CompletedSessions,
+    (parseFloat(row.CompletionRate || 0)).toFixed(2) + '%',
+    formatCurrency(row.TotalRevenue),
+    formatCurrency(row.AverageSessionPrice)
+  ]);
+  renderTable(headers, rows);
+}
+
+/**
+ * Render Revenue Trends Report
+ */
+function renderRevenueTrendsReport(data) {
+  const labels = data.map(row => row.YearMonth);
+  const revenues = data.map(row => parseFloat(row.TotalRevenue || 0));
+  const sessions = data.map(row => parseInt(row.TotalSessions || 0));
+  
+  const ctx = document.getElementById('reportChart').getContext('2d');
+  currentChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Revenue ($)',
+          data: revenues,
+          borderColor: 'rgba(54, 162, 235, 1)',
+          backgroundColor: 'rgba(54, 162, 235, 0.1)',
+          yAxisID: 'y',
+          tension: 0.4
+        },
+        {
+          label: 'Sessions',
+          data: sessions,
+          borderColor: 'rgba(255, 99, 132, 1)',
+          backgroundColor: 'rgba(255, 99, 132, 0.1)',
+          yAxisID: 'y1',
+          tension: 0.4
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: true },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              if (context.datasetIndex === 0) {
+                return 'Revenue: $' + context.parsed.y.toFixed(2);
+              } else {
+                return 'Sessions: ' + context.parsed.y;
+              }
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          type: 'linear',
+          display: true,
+          position: 'left',
+          beginAtZero: true,
+          ticks: {
+            callback: function(value) {
+              return '$' + value.toFixed(2);
+            }
+          }
+        },
+        y1: {
+          type: 'linear',
+          display: true,
+          position: 'right',
+          beginAtZero: true,
+          grid: { drawOnChartArea: false }
+        }
+      }
+    }
+  });
+
+  const headers = ['Month', 'Total Sessions', 'Total Revenue', 'Avg Session Price'];
+  const rows = data.map(row => [
+    row.YearMonth,
+    row.TotalSessions,
+    formatCurrency(row.TotalRevenue),
+    formatCurrency(row.AverageSessionPrice)
+  ]);
+  renderTable(headers, rows);
+}
+
+/**
+ * Render Client Activity Report
+ */
+function renderClientActivityReport(data) {
+  // Show top 10 clients
+  const topClients = data.slice(0, 10);
+  const labels = topClients.map(row => row.ClientName);
+  const spending = topClients.map(row => parseFloat(row.TotalAmountSpent || 0));
+  
+  const ctx = document.getElementById('reportChart').getContext('2d');
+  currentChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Total Spent ($)',
+        data: spending,
+        backgroundColor: 'rgba(153, 102, 255, 0.6)',
+        borderColor: 'rgba(153, 102, 255, 1)',
+        borderWidth: 1
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { display: true },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              return 'Spent: $' + context.parsed.x.toFixed(2);
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          ticks: {
+            callback: function(value) {
+              return '$' + value.toFixed(2);
+            }
+          }
+        }
+      }
+    }
+  });
+
+  const headers = ['Client Name', 'Email', 'Join Date', 'Sessions', 'Total Spent', 'Avg Price', 'Last Booking'];
+  const rows = data.map(row => [
+    row.ClientName,
+    row.ClientEmail,
+    formatDate(row.JoinDate),
+    row.TotalSessionsBooked,
+    formatCurrency(row.TotalAmountSpent),
+    formatCurrency(row.AverageSessionPrice),
+    row.MostRecentBookingDate ? formatDateTime(row.MostRecentBookingDate) : 'N/A'
+  ]);
+  renderTable(headers, rows);
+}
+
+/**
+ * Render Room Utilization Report
+ */
+function renderRoomUtilizationReport(data) {
+  const labels = data.map(row => row.RoomName);
+  const sessions = data.map(row => parseInt(row.TotalSessionsAssigned || 0));
+  
+  const ctx = document.getElementById('reportChart').getContext('2d');
+  currentChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Sessions Assigned',
+        data: sessions,
+        backgroundColor: 'rgba(255, 159, 64, 0.6)',
+        borderColor: 'rgba(255, 159, 64, 1)',
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { display: true }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: {
+            stepSize: 1
+          }
+        }
+      }
+    }
+  });
+
+  const headers = ['Room Name', 'Room No', 'Sessions', 'Hours', 'Revenue'];
+  const rows = data.map(row => [
+    row.RoomName,
+    row.RoomNo,
+    row.TotalSessionsAssigned,
+    row.TotalHoursUtilized,
+    formatCurrency(row.RevenueGenerated)
+  ]);
+  renderTable(headers, rows);
+}
+
+/**
+ * Render Booking Status Report
+ */
+function renderBookingStatusReport(data) {
+  const labels = data.map(row => row.Status);
+  const counts = data.map(row => parseInt(row.SessionCount || 0));
+  const colors = ['rgba(255, 206, 86, 0.6)', 'rgba(54, 162, 235, 0.6)', 'rgba(75, 192, 192, 0.6)', 'rgba(255, 99, 132, 0.6)'];
+  
+  const ctx = document.getElementById('reportChart').getContext('2d');
+  currentChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: counts,
+        backgroundColor: colors.slice(0, labels.length),
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { position: 'bottom' },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const label = context.label || '';
+              const value = context.parsed || 0;
+              const total = counts.reduce((a, b) => a + b, 0);
+              const percentage = ((value / total) * 100).toFixed(1);
+              return label + ': ' + value + ' (' + percentage + '%)';
+            }
+          }
+        }
+      }
+    }
+  });
+
+  const headers = ['Status', 'Session Count', 'Total Revenue', '% of Sessions', '% of Revenue'];
+  const rows = data.map(row => [
+    row.Status,
+    row.SessionCount,
+    formatCurrency(row.TotalRevenue),
+    (parseFloat(row.PercentageOfTotalSessions || 0)).toFixed(2) + '%',
+    (parseFloat(row.PercentageOfTotalRevenue || 0)).toFixed(2) + '%'
+  ]);
+  renderTable(headers, rows);
+}
+
+/**
+ * Render Payment Status Report
+ */
+function renderPaymentStatusReport(data) {
+  const labels = data.map(row => row.PaymentStatus);
+  const amounts = data.map(row => parseFloat(row.TotalAmount || 0));
+  const colors = ['rgba(255, 206, 86, 0.6)', 'rgba(75, 192, 192, 0.6)', 'rgba(255, 99, 132, 0.6)', 'rgba(153, 102, 255, 0.6)'];
+  
+  const ctx = document.getElementById('reportChart').getContext('2d');
+  currentChart = new Chart(ctx, {
+    type: 'pie',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: amounts,
+        backgroundColor: colors.slice(0, labels.length),
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { position: 'bottom' },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              return context.label + ': $' + context.parsed.toFixed(2);
+            }
+          }
+        }
+      }
+    }
+  });
+
+  const headers = ['Payment Status', 'Payment Count', 'Total Amount', 'Avg Amount', '% of Payments', '% of Revenue'];
+  const rows = data.map(row => [
+    row.PaymentStatus,
+    row.PaymentCount,
+    formatCurrency(row.TotalAmount),
+    formatCurrency(row.AveragePaymentAmount),
+    (parseFloat(row.PercentageOfTotalPayments || 0)).toFixed(2) + '%',
+    (parseFloat(row.PercentageOfTotalRevenue || 0)).toFixed(2) + '%'
+  ]);
+  renderTable(headers, rows);
+}
+
+/**
+ * Render Trainer Utilization Report
+ */
+function renderTrainerUtilizationReport(data) {
+  const labels = data.map(row => row.TrainerName);
+  const rates = data.map(row => parseFloat(row.UtilizationRate || 0));
+  
+  const ctx = document.getElementById('reportChart').getContext('2d');
+  currentChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Utilization Rate (%)',
+        data: rates,
+        backgroundColor: 'rgba(255, 99, 132, 0.6)',
+        borderColor: 'rgba(255, 99, 132, 1)',
+        borderWidth: 1
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { display: true },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              return 'Utilization: ' + context.parsed.x.toFixed(2) + '%';
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          max: 100,
+          ticks: {
+            callback: function(value) {
+              return value + '%';
+            }
+          }
+        }
+      }
+    }
+  });
+
+  const headers = ['Trainer Name', 'Availability Slots', 'Booked Sessions', 'Utilization Rate', 'Revenue'];
+  const rows = data.map(row => [
+    row.TrainerName,
+    row.TotalAvailabilitySlots,
+    row.TotalBookedSessions,
+    (parseFloat(row.UtilizationRate || 0)).toFixed(2) + '%',
+    formatCurrency(row.RevenueGenerated)
+  ]);
+  renderTable(headers, rows);
+}
+
+/**
+ * Render Session Completion Report
+ */
+function renderSessionCompletionReport(data) {
+  // Group by category
+  const overall = data.find(row => row.Category === 'Overall');
+  const bySpecialty = data.filter(row => row.Category === 'By Specialty');
+  const byTrainer = data.filter(row => row.Category === 'By Trainer');
+
+  // Chart for completion rates by specialty
+  if (bySpecialty.length > 0) {
+    const labels = bySpecialty.map(row => row.SubCategory);
+    const completionRates = bySpecialty.map(row => parseFloat(row.CompletionRate || 0));
+    
+    const ctx = document.getElementById('reportChart').getContext('2d');
+    currentChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Completion Rate (%)',
+          data: completionRates,
+          backgroundColor: 'rgba(75, 192, 192, 0.6)',
+          borderColor: 'rgba(75, 192, 192, 1)',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          legend: { display: true },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                return 'Completion Rate: ' + context.parsed.x.toFixed(2) + '%';
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            max: 100,
+            ticks: {
+              callback: function(value) {
+                return value + '%';
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  const headers = ['Category', 'Sub Category', 'Total Sessions', 'Completed', 'Cancelled', 'Completion Rate', 'Cancellation Rate', 'Revenue Lost'];
+  const rows = data.map(row => [
+    row.Category,
+    row.SubCategory,
+    row.TotalSessions,
+    row.CompletedSessions,
+    row.CancelledSessions,
+    (parseFloat(row.CompletionRate || 0)).toFixed(2) + '%',
+    (parseFloat(row.CancellationRate || 0)).toFixed(2) + '%',
+    formatCurrency(row.RevenueLostFromCancellations)
+  ]);
+  renderTable(headers, rows);
+}
+
+/**
+ * Render data table
+ */
+function renderTable(headers, rows) {
+  const thead = document.getElementById('reportTableHead');
+  const tbody = document.getElementById('reportTableBody');
+  
+  // Clear existing content
+  thead.innerHTML = '';
+  tbody.innerHTML = '';
+  
+  // Create header row
+  const headerRow = document.createElement('tr');
+  headers.forEach(header => {
+    const th = document.createElement('th');
+    th.textContent = header;
+    headerRow.appendChild(th);
+  });
+  thead.appendChild(headerRow);
+  
+  // Create data rows
+  rows.forEach(row => {
+    const tr = document.createElement('tr');
+    row.forEach(cell => {
+      const td = document.createElement('td');
+      td.textContent = cell;
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+}
+
 // Make functions globally available
 window.loadUnassignedSessions = loadUnassignedSessions;
 window.loadAllSessions = loadAllSessions;
 window.assignRoomToSession = assignRoomToSession;
 window.unassignRoom = unassignRoom;
+window.loadReport = loadReport;
+window.initializeReports = initializeReports;
 
