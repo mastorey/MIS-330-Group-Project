@@ -66,7 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (role.toLowerCase() === 'client') {
           window.location.href = './client.html';
         } else if (role.toLowerCase() === 'admin') {
-          window.location.href = './index.html';
+          window.location.href = './admin.html';
         } else {
           window.location.href = './index.html';
         }

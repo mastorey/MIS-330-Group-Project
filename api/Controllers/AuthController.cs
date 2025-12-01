@@ -465,14 +465,14 @@ namespace MyApp.Namespace
                 if (userType == "Trainer")
                 {
                     if (request.Certification != null)
-                    {
-                        string updateCertQuery = "UPDATE Trainers SET Certification = @certification WHERE TrainerID = @userId";
-                        using var updateCertCommand = new MySqlCommand(updateCertQuery, connection);
-                        updateCertCommand.Parameters.AddWithValue("@certification", string.IsNullOrEmpty(request.Certification) 
-                            ? (object)DBNull.Value 
-                            : request.Certification.Trim());
-                        updateCertCommand.Parameters.AddWithValue("@userId", userId);
-                        updateCertCommand.ExecuteNonQuery();
+                {
+                    string updateCertQuery = "UPDATE Trainers SET Certification = @certification WHERE TrainerID = @userId";
+                    using var updateCertCommand = new MySqlCommand(updateCertQuery, connection);
+                    updateCertCommand.Parameters.AddWithValue("@certification", string.IsNullOrEmpty(request.Certification) 
+                        ? (object)DBNull.Value 
+                        : request.Certification.Trim());
+                    updateCertCommand.Parameters.AddWithValue("@userId", userId);
+                    updateCertCommand.ExecuteNonQuery();
                     }
                     
                     if (request.Rate.HasValue)

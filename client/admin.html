@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Trainer Portal - VitalCore Fitness Marketplace</title>
+    <title>Admin Portal - VitalCore Fitness Marketplace</title>
 
     <!-- Bootstrap CSS -->
     <link
@@ -88,9 +88,9 @@
       <div class="container">
         <div class="row">
           <div class="col-12 text-center">
-            <h1 class="hero-headline">Trainer Portal</h1>
+            <h1 class="hero-headline">Admin Portal</h1>
             <p class="hero-subtext">
-              Manage your profile, availability, and view your booked sessions with clients. Track booking status and payments all in one place.
+              Manage session bookings, assign rooms to sessions, and view all session details.
             </p>
           </div>
         </div>
@@ -100,51 +100,116 @@
     <!-- Main Content -->
     <main class="container py-5">
       <!-- Tab Navigation -->
-      <ul class="nav nav-tabs mb-4" id="trainerTabs" role="tablist">
+      <ul class="nav nav-tabs mb-4" id="adminTabs" role="tablist">
         <li class="nav-item" role="presentation">
-          <button class="nav-link active" id="schedule-tab" data-bs-toggle="tab" data-bs-target="#scheduleTab" type="button" role="tab" aria-controls="scheduleTab" aria-selected="true" onclick="loadAvailabilityData()">
-            Weekly Schedule
+          <button class="nav-link active" id="roomAssignment-tab" data-bs-toggle="tab" data-bs-target="#roomAssignmentTab" type="button" role="tab" aria-controls="roomAssignmentTab" aria-selected="true" onclick="loadUnassignedSessions()">
+            Room Assignment
           </button>
         </li>
         <li class="nav-item" role="presentation">
-          <button class="nav-link" id="sessions-tab" data-bs-toggle="tab" data-bs-target="#sessionsTab" type="button" role="tab" aria-controls="sessionsTab" aria-selected="false" onclick="loadSessionsData()">
-            Booked Sessions
+          <button class="nav-link" id="allSessions-tab" data-bs-toggle="tab" data-bs-target="#allSessionsTab" type="button" role="tab" aria-controls="allSessionsTab" aria-selected="false" onclick="loadAllSessions()">
+            All Sessions
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="reports-tab" data-bs-toggle="tab" data-bs-target="#reportsTab" type="button" role="tab" aria-controls="reportsTab" aria-selected="false" onclick="loadReport(currentReportId || 'specialty-performance')">
+            Reports
           </button>
         </li>
       </ul>
 
       <!-- Tab Content -->
-      <div class="tab-content" id="trainerTabContent">
-        <!-- Weekly Schedule Tab -->
-        <div class="tab-pane fade show active" id="scheduleTab" role="tabpanel" aria-labelledby="schedule-tab">
+      <div class="tab-content" id="adminTabContent">
+        <!-- Room Assignment Tab -->
+        <div class="tab-pane fade show active" id="roomAssignmentTab" role="tabpanel" aria-labelledby="roomAssignment-tab">
           <div class="card shadow-sm">
             <div class="card-body">
-              <div class="d-flex justify-content-between align-items-center mb-4">
-                <div>
-                  <h5 class="card-title mb-0">Weekly Availability Schedule</h5>
-                  <p class="card-text text-muted mb-0 small">Click on empty time slots to add availability, or click existing slots to edit/delete.</p>
-                </div>
-                <button type="button" class="btn btn-primary" onclick="openAddAvailabilityModal()">
-                  Add Availability
-                </button>
-              </div>
-              <!-- Availability calendar will be displayed here -->
-              <div id="availabilityData" class="mt-3">
-                <p class="text-white">Loading availability data...</p>
+              <h5 class="card-title mb-4">Room Assignment</h5>
+              <!-- Unassigned sessions data will be displayed here -->
+              <div id="unassignedSessionsData" class="mt-3">
+                <p class="text-white">Loading unassigned sessions...</p>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Booked Sessions Tab -->
-        <div class="tab-pane fade" id="sessionsTab" role="tabpanel" aria-labelledby="sessions-tab">
+        <!-- All Sessions Tab -->
+        <div class="tab-pane fade" id="allSessionsTab" role="tabpanel" aria-labelledby="allSessions-tab">
           <div class="card shadow-sm">
             <div class="card-body">
-              <h5 class="card-title mb-4">Booked Sessions</h5>
-              <p class="card-text text-muted mb-3">View your booked sessions with clients, including payment status and booking details.</p>
-              <!-- Sessions data will be displayed here -->
-              <div id="sessionsData" class="mt-3">
-                <p class="text-white">Loading sessions data...</p>
+              <h5 class="card-title mb-4">All Sessions</h5>
+              <!-- All sessions data will be displayed here -->
+              <div id="allSessionsData" class="mt-3">
+                <p class="text-white">Loading all sessions...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Reports Tab -->
+        <div class="tab-pane fade" id="reportsTab" role="tabpanel" aria-labelledby="reports-tab">
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center mb-4">
+                <h5 class="card-title mb-0">Business Reports</h5>
+                <button class="btn btn-sm btn-primary" onclick="loadReport(currentReportId)" id="refreshReportBtn">
+                  <span>🔄</span> Refresh
+                </button>
+              </div>
+              
+              <!-- Report Selector -->
+              <div class="mb-4">
+                <label for="reportSelector" class="form-label">Select Report</label>
+                <select class="form-select" id="reportSelector" onchange="loadReport(this.value)">
+                  <option value="specialty-performance">Specialty Performance</option>
+                  <option value="trainer-performance">Trainer Performance</option>
+                  <option value="revenue-trends">Revenue Trends</option>
+                  <option value="client-activity">Client Activity</option>
+                  <option value="room-utilization">Room Utilization</option>
+                  <option value="booking-status">Booking Status</option>
+                  <option value="payment-status">Payment Status</option>
+                  <option value="trainer-utilization">Trainer Utilization</option>
+                  <option value="session-completion">Session Completion</option>
+                </select>
+              </div>
+
+              <!-- Loading Indicator -->
+              <div id="reportLoading" class="text-center py-5" style="display: none;">
+                <div class="spinner-border text-primary" role="status">
+                  <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-3 text-muted">Loading report data...</p>
+              </div>
+
+              <!-- Error Message -->
+              <div id="reportError" class="alert alert-danger" style="display: none;">
+                <p class="mb-0" id="reportErrorMessage"></p>
+              </div>
+
+              <!-- Report Display Area -->
+              <div id="reportDisplay" style="display: none;">
+                <!-- Chart Container -->
+                <div class="mb-4">
+                  <div class="card">
+                    <div class="card-body">
+                      <h6 class="card-subtitle mb-3 text-muted" id="reportTitle"></h6>
+                      <canvas id="reportChart" height="100"></canvas>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Data Table -->
+                <div class="card">
+                  <div class="card-body">
+                    <h6 class="card-subtitle mb-3 text-muted">Data Table</h6>
+                    <div class="table-responsive">
+                      <table class="table table-dark table-striped table-hover" id="reportTable">
+                        <thead id="reportTableHead"></thead>
+                        <tbody id="reportTableBody"></tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -159,6 +224,9 @@
       integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
       crossorigin="anonymous"
     ></script>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
     <!-- Profile Modal -->
     <div class="modal fade" id="profileModal" tabindex="-1" aria-labelledby="profileModalLabel" aria-hidden="true">
@@ -198,36 +266,6 @@
                 <div class="invalid-feedback">Please provide your birthday.</div>
               </div>
 
-              <!-- Phone (Client and Trainer only) -->
-              <div class="mb-3" id="profilePhoneGroup" style="display: none;">
-                <label for="profilePhone" class="form-label">Phone Number</label>
-                <input type="tel" class="form-control" id="profilePhone" pattern="[0-9]{3}-[0-9]{3}-[0-9]{4}|[0-9]{10}" readonly />
-                <div class="invalid-feedback">Please provide a valid phone number.</div>
-              </div>
-
-              <!-- Certification (Trainer only) -->
-              <div class="mb-3" id="profileCertificationGroup" style="display: none;">
-                <label for="profileCertification" class="form-label">Certification</label>
-                <input type="text" class="form-control" id="profileCertification" placeholder="e.g., NASM-CPT, ACE-CPT" readonly />
-              </div>
-
-              <!-- Rate per Hour (Trainer only) -->
-              <div class="mb-3" id="profileRateGroup" style="display: none;">
-                <label for="profileRate" class="form-label">Rate per Hour ($)</label>
-                <input type="number" class="form-control" id="profileRate" step="0.01" min="0" placeholder="0.00" readonly />
-                <div class="invalid-feedback">Please provide a valid rate (must be 0 or greater).</div>
-                <small class="form-text text-muted">Your hourly training rate</small>
-              </div>
-
-              <!-- Specialties (Trainer only) -->
-              <div class="mb-3" id="profileSpecialtiesGroup" style="display: none;">
-                <label class="form-label">Specialties <span class="text-danger">*</span></label>
-                <div id="profileSpecialtiesContainer" class="border rounded p-3" style="max-height: 200px; overflow-y: auto; background-color: #212529;">
-                  <p class="text-muted mb-0">Loading specialties...</p>
-                </div>
-                <small class="form-text text-muted">Select your training specialties</small>
-              </div>
-
               <!-- Password -->
               <div class="mb-3" id="profilePasswordGroup">
                 <label for="profilePassword" class="form-label">New Password</label>
@@ -256,80 +294,9 @@
       </div>
     </div>
 
-    <!-- Add/Edit Availability Modal -->
-    <div class="modal fade" id="availabilityModal" tabindex="-1" aria-labelledby="availabilityModalLabel" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title" id="availabilityModalLabel">Add Availability</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-          </div>
-          <form id="availabilityForm" novalidate onsubmit="handleAvailabilitySubmit(event)">
-            <div class="modal-body">
-              <!-- Day of Week -->
-              <div class="mb-3">
-                <label for="availabilityDayOfWeek" class="form-label">Day of Week <span class="text-danger">*</span></label>
-                <select class="form-select" id="availabilityDayOfWeek" required>
-                  <option value="">Select a day</option>
-                  <option value="Monday">Monday</option>
-                  <option value="Tuesday">Tuesday</option>
-                  <option value="Wednesday">Wednesday</option>
-                  <option value="Thursday">Thursday</option>
-                  <option value="Friday">Friday</option>
-                  <option value="Saturday">Saturday</option>
-                  <option value="Sunday">Sunday</option>
-                </select>
-                <div class="invalid-feedback">Please select a day of the week.</div>
-              </div>
-
-              <!-- Start Time -->
-              <div class="mb-3">
-                <label for="availabilityStartTime" class="form-label">Start Time <span class="text-danger">*</span></label>
-                <select class="form-select" id="availabilityStartTime" required>
-                  <option value="">Select a time</option>
-                </select>
-                <div class="invalid-feedback">Please select a start time.</div>
-              </div>
-
-              <!-- Specialty -->
-              <div class="mb-3">
-                <label for="availabilitySpecialty" class="form-label">Specialty <span class="text-danger">*</span></label>
-                <select class="form-select" id="availabilitySpecialty" required>
-                  <option value="">Select a specialty</option>
-                </select>
-                <div class="invalid-feedback">Please select a specialty.</div>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-              <button type="submit" class="btn btn-primary" id="availabilitySubmitBtn">Add Availability</button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
-
-    <!-- Success Message Modal -->
-    <div class="modal fade" id="successModal" tabindex="-1" aria-labelledby="successModalLabel" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <div class="modal-header bg-success text-white">
-            <h5 class="modal-title" id="successModalLabel">✓ Success</h5>
-            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-          </div>
-          <div class="modal-body">
-            <p id="successModalMessage" class="mb-0">Operation completed successfully!</p>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-success" data-bs-dismiss="modal">OK</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- Custom JS -->
-    <script src="./scripts/trainer.js"></script>
     <script src="./scripts/profile.js"></script>
+    <script src="./scripts/admin.js"></script>
   </body>
 </html>
 

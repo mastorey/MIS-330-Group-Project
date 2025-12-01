@@ -1,11 +1,28 @@
-## Build results
+# .NET Build Artifacts
+bin/
+obj/
+*.dll
+*.pdb
+*.cache
+*.sourcelink.json
+*.AssemblyInfo.cs
+*.AssemblyInfoInputs.cache
+*.csproj.CoreCompileInputs.cache
+*.csproj.nuget.dgspec.json
+*.csproj.nuget.g.props
+*.csproj.nuget.g.targets
+*.deps.json
+*.runtimeconfig.json
+*.staticwebassets.endpoints.json
+apphost
+*.pdb
+*.dll
+
+# Build results
 [Dd]ebug/
-[Dd]ebugPublic/
 [Rr]elease/
-[Rr]eleases/
 x64/
 x86/
-[Ww][Ii][Nn]32/
 [Aa][Rr][Mm]/
 [Aa][Rr][Mm]64/
 bld/
@@ -14,54 +31,25 @@ bld/
 [Ll]og/
 [Ll]ogs/
 
-## Visual Studio cache/options directory
+# Visual Studio cache/options
 .vs/
-
-## Visual Studio Code
 .vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
 
-## User-specific files
+# Rider
+.idea/
+
+# User-specific files
 *.rsuser
 *.suo
 *.user
 *.userosscache
 *.sln.docstates
 
-## Build results
-[Dd]ebug/
-[Dd]ebugPublic/
-[Rr]elease/
-[Rr]eleases/
-x64/
-x86/
-[Ww][Ii][Nn]32/
-[Aa][Rr][Mm]/
-[Aa][Rr][Mm]64/
-bld/
-[Bb]in/
-[Oo]bj/
-[Ll]og/
-[Ll]ogs/
-
-## .NET Core
-project.lock.json
-project.fragment.lock.json
-artifacts/
-
-## NuGet Packages
-*.nupkg
-*.snupkg
-**/packages/*
-
-## Rider
-.idea/
-*.sln.iml
-
-## macOS
+# OS files
 .DS_Store
-
-## Windows
 Thumbs.db
-ehthumbs.db
-Desktop.ini
 
