@@ -110,6 +110,7 @@ async function loadMySessions() {
               <th>Status</th>
               <th>Payment Status</th>
               <th>Booking Date</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody id="mySessionsTableBody">
@@ -128,12 +129,17 @@ async function loadMySessions() {
       const formattedBookingDate = session.bookingDate ? formatDateTime(session.bookingDate) : 'N/A';
       
       // Show Pay button if payment status is not Completed
-      const payButton = session.paymentStatus !== 'Completed' 
-        ? `<button class="btn btn-sm btn-primary" onclick="handlePayment(${session.sessionId}, ${session.price})">Pay</button>`
+      const payButton = session.paymentStatus !== 'Completed' && session.status !== 'Cancelled'
+        ? `<button class="btn btn-sm btn-primary me-1" onclick="handlePayment(${session.sessionId}, ${session.price})">Pay</button>`
+        : '';
+      
+      // Show Cancel button if session is not Cancelled or Completed
+      const cancelButton = session.status !== 'Cancelled' && session.status !== 'Completed'
+        ? `<button class="btn btn-sm btn-danger" onclick="cancelSession(${session.sessionId})">Cancel</button>`
         : '<span class="text-muted">-</span>';
       
       return `
-        <tr>
+        <tr style="cursor: pointer;" onclick="showSessionDetails(${session.sessionId}, '${session.trainerName}', '${session.specialtyName}', '${formattedDate}', '${formattedTime}', '${session.roomName || 'Not assigned'}', '${formattedPrice}', '${session.status}', '${session.paymentStatus}')" onmouseover="this.style.backgroundColor='rgba(255,255,255,0.1)'" onmouseout="this.style.backgroundColor=''">
           <td>${formattedDate}</td>
           <td>${formattedTime}</td>
           <td>${session.trainerName}</td>
@@ -143,7 +149,12 @@ async function loadMySessions() {
           <td>${statusBadge}</td>
           <td>${paymentBadge}</td>
           <td>${formattedBookingDate}</td>
-          <td>${payButton}</td>
+          <td onclick="event.stopPropagation();">
+            <div class="d-flex gap-1">
+              ${payButton}
+              ${cancelButton}
+            </div>
+          </td>
         </tr>
       `;
     }).join('');
@@ -571,6 +582,87 @@ async function confirmBooking(availabilityId, calculatedDate, modal) {
 }
 
 /**
+ * Cancel a booked session
+ */
+async function cancelSession(sessionId) {
+  // Show confirmation popup
+  if (!confirm('Are you sure you want to cancel this session? This action cannot be undone.')) {
+    return;
+  }
+
+  const userEmail = localStorage.getItem('userEmail');
+  if (!userEmail) {
+    alert('Please log in to cancel sessions.');
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/client/sessions/${sessionId}/cancel?email=${encodeURIComponent(userEmail)}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    // Handle response - check if it's OK and has content
+    let data;
+    
+    if (!response.ok) {
+      // Try to get error message from response
+      let errorMessage = `Error ${response.status}: ${response.statusText || 'Unknown error'}`;
+      try {
+        const errorText = await response.text();
+        if (errorText) {
+          try {
+            const errorData = JSON.parse(errorText);
+            errorMessage = errorData.message || errorMessage;
+          } catch {
+            errorMessage = errorText || errorMessage;
+          }
+        }
+      } catch {
+        // If we can't read the response, use status text
+      }
+      
+      alert(errorMessage);
+      return;
+    }
+    
+    // Response is OK, try to parse JSON
+    try {
+      const responseText = await response.text();
+      if (responseText) {
+        data = JSON.parse(responseText);
+      } else {
+        // Empty response but status is OK - assume success
+        data = { success: true, message: 'Session cancelled successfully' };
+      }
+    } catch (parseError) {
+      console.error('Error parsing JSON response:', parseError);
+      // If parsing fails but status is OK, assume success
+      data = { success: true, message: 'Session cancelled successfully' };
+    }
+    
+    if (data.success) {
+      // Reload sessions
+      await loadMySessions();
+      
+      // Show success message
+      if (typeof showSuccessModal === 'function') {
+        showSuccessModal('Session cancelled successfully!');
+      } else {
+        alert('Session cancelled successfully!');
+      }
+    } else {
+      alert(data.message || 'Failed to cancel session. Please try again.');
+    }
+  } catch (error) {
+    console.error('Error cancelling session:', error);
+    alert('An error occurred while cancelling the session. Please try again.');
+  }
+}
+
+/**
  * Get status badge HTML
  */
 function getStatusBadge(status) {
@@ -643,6 +735,42 @@ function formatCurrency(amount) {
   return `$${parseFloat(amount).toFixed(2)}`;
 }
 
+/**
+ * Show session details in a modal
+ */
+function showSessionDetails(sessionId, trainerName, specialtyName, date, time, room, price, status, paymentStatus) {
+  // Set modal content
+  document.getElementById('detailDate').textContent = date;
+  document.getElementById('detailTime').textContent = time;
+  document.getElementById('detailTrainer').textContent = trainerName;
+  document.getElementById('detailSpecialty').textContent = specialtyName;
+  document.getElementById('detailRoom').textContent = room;
+  document.getElementById('detailPrice').textContent = price;
+  
+  // Set status badge
+  const statusColors = {
+    'Pending': 'warning',
+    'Confirmed': 'info',
+    'Completed': 'success',
+    'Cancelled': 'danger'
+  };
+  const statusColor = statusColors[status] || 'secondary';
+  document.getElementById('detailStatus').innerHTML = `<span class="badge bg-${statusColor}">${status}</span>`;
+  
+  // Set payment status badge
+  const paymentColors = {
+    'Pending': 'warning',
+    'Completed': 'success',
+    'Failed': 'danger'
+  };
+  const paymentColor = paymentColors[paymentStatus] || 'secondary';
+  document.getElementById('detailPaymentStatus').innerHTML = `<span class="badge bg-${paymentColor}">${paymentStatus}</span>`;
+  
+  // Show modal
+  const modal = new bootstrap.Modal(document.getElementById('sessionDetailsModal'));
+  modal.show();
+}
+
 // Make functions globally available
 window.loadMySessions = loadMySessions;
 window.loadFindSessions = loadFindSessions;
@@ -650,4 +778,6 @@ window.handlePayment = handlePayment;
 window.processPayment = processPayment;
 window.bookSession = bookSession;
 window.applySorting = applySorting;
+window.cancelSession = cancelSession;
+window.showSessionDetails = showSessionDetails;
 
