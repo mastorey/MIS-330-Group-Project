@@ -288,6 +288,15 @@
                 <small class="form-text text-muted">Your hourly training rate</small>
               </div>
 
+              <!-- Specialties (Trainer only) -->
+              <div class="mb-3" id="profileSpecialtiesGroup" style="display: none;">
+                <label class="form-label">Specialties <span class="text-danger">*</span></label>
+                <div id="profileSpecialtiesContainer" class="border rounded p-3" style="max-height: 200px; overflow-y: auto; background-color: #212529;">
+                  <p class="text-muted mb-0">Loading specialties...</p>
+                </div>
+                <small class="form-text text-muted">Select your training specialties</small>
+              </div>
+
               <!-- Password -->
               <div class="mb-3" id="profilePasswordGroup">
                 <label for="profilePassword" class="form-label">New Password</label>
@@ -318,6 +327,24 @@
 
     <!-- Custom JS -->
     <script src="./scripts/signup-trainer.js"></script>
+    <!-- Success Message Modal -->
+    <div class="modal fade" id="successModal" tabindex="-1" aria-labelledby="successModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header bg-success text-white">
+            <h5 class="modal-title" id="successModalLabel">✓ Success</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p id="successModalMessage" class="mb-0">Operation completed successfully!</p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-success" data-bs-dismiss="modal">OK</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script src="./scripts/profile.js"></script>
   </body>
 </html>

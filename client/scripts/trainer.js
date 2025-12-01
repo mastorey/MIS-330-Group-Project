@@ -460,7 +460,7 @@ function populateTimeSlots() {
 /**
  * Populate specialties dropdown
  */
-function populateSpecialties() {
+async function populateSpecialties() {
   const specialtySelect = document.getElementById('availabilitySpecialty');
   if (!specialtySelect) return;
 
@@ -469,19 +469,47 @@ function populateSpecialties() {
     specialtySelect.remove(1);
   }
 
+  // If specialties haven't been loaded yet, fetch them
+  if (trainerSpecialties.length === 0) {
+    const userEmail = localStorage.getItem('userEmail');
+    if (userEmail) {
+      try {
+        const specialtiesResponse = await fetch(`${API_BASE_URL}/trainer/specialties?email=${encodeURIComponent(userEmail)}`);
+        
+        if (specialtiesResponse.ok) {
+          const specialtiesData = await specialtiesResponse.json();
+          
+          if (specialtiesData.success) {
+            trainerSpecialties = specialtiesData.data || [];
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching specialties:', error);
+      }
+    }
+  }
+
   // Add trainer specialties
-  trainerSpecialties.forEach(specialty => {
+  if (trainerSpecialties.length === 0) {
     const option = document.createElement('option');
-    option.value = specialty.specialtyId;
-    option.textContent = specialty.specialtyName;
+    option.value = '';
+    option.textContent = 'No specialties available. Please add specialties to your profile first.';
+    option.disabled = true;
     specialtySelect.appendChild(option);
-  });
+  } else {
+    trainerSpecialties.forEach(specialty => {
+      const option = document.createElement('option');
+      option.value = specialty.specialtyId;
+      option.textContent = specialty.specialtyName;
+      specialtySelect.appendChild(option);
+    });
+  }
 }
 
 /**
  * Open add availability modal
  */
-function openAddAvailabilityModal(dayOfWeek = null, startTime = null) {
+async function openAddAvailabilityModal(dayOfWeek = null, startTime = null) {
   const modal = new bootstrap.Modal(document.getElementById('availabilityModal'));
   const modalLabel = document.getElementById('availabilityModalLabel');
   const submitBtn = document.getElementById('availabilitySubmitBtn');
@@ -496,16 +524,29 @@ function openAddAvailabilityModal(dayOfWeek = null, startTime = null) {
   submitBtn.textContent = 'Add Availability';
   submitBtn.setAttribute('data-mode', 'add');
   
+  // Get select elements
+  const timeSelect = document.getElementById('availabilityStartTime');
+  const daySelect = document.getElementById('availabilityDayOfWeek');
+  
+  // Ensure fields are enabled initially (will be disabled if specific slot clicked)
+  daySelect.removeAttribute('disabled');
+  timeSelect.removeAttribute('disabled');
+  
   // Populate dropdowns
   populateTimeSlots();
-  populateSpecialties();
+  await populateSpecialties();
   
-  // Pre-fill if day and time provided
+  // Pre-fill if day and time provided (and disable them)
   if (dayOfWeek) {
-    document.getElementById('availabilityDayOfWeek').value = dayOfWeek;
+    daySelect.value = dayOfWeek;
+    // Disable day selection when clicking a specific slot
+    daySelect.setAttribute('disabled', 'disabled');
   }
+  
   if (startTime) {
-    document.getElementById('availabilityStartTime').value = startTime;
+    timeSelect.value = startTime;
+    // Disable time selection when clicking a specific slot
+    timeSelect.setAttribute('disabled', 'disabled');
   }
   
   modal.show();
@@ -514,7 +555,7 @@ function openAddAvailabilityModal(dayOfWeek = null, startTime = null) {
 /**
  * Open edit availability modal
  */
-function openEditAvailabilityModal(availabilityId) {
+async function openEditAvailabilityModal(availabilityId) {
   const availability = availabilityList.find(avail => avail.availabilityId === availabilityId);
   if (!availability) {
     alert('Availability not found');
@@ -538,12 +579,22 @@ function openEditAvailabilityModal(availabilityId) {
   
   // Populate dropdowns
   populateTimeSlots();
-  populateSpecialties();
+  await populateSpecialties();
+  
+  // Get select elements
+  const daySelect = document.getElementById('availabilityDayOfWeek');
+  const timeSelect = document.getElementById('availabilityStartTime');
+  const specialtySelect = document.getElementById('availabilitySpecialty');
   
   // Pre-fill with current values
-  document.getElementById('availabilityDayOfWeek').value = availability.dayOfWeek;
-  document.getElementById('availabilityStartTime').value = availability.startTime;
-  document.getElementById('availabilitySpecialty').value = availability.specialtyId;
+  daySelect.value = availability.dayOfWeek;
+  timeSelect.value = availability.startTime;
+  specialtySelect.value = availability.specialtyId;
+  
+  // Enable all fields in edit mode (user can change them)
+  daySelect.removeAttribute('disabled');
+  timeSelect.removeAttribute('disabled');
+  specialtySelect.removeAttribute('disabled');
   
   modal.show();
 }

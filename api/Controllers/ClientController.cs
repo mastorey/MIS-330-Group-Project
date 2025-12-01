@@ -62,6 +62,7 @@ namespace MyApp.Namespace
                     LEFT JOIN Payments p ON sb.SessionID = p.SessionID AND p.IsDeleted = 0
                     WHERE sb.ClientID = @clientId 
                     AND sb.IsDeleted = 0
+                    AND sb.Status != 'Cancelled'
                     ORDER BY sb.SessionDate ASC, sb.StartTime ASC";
 
                 using var command = new MySqlCommand(query, connection);
@@ -436,10 +437,31 @@ namespace MyApp.Namespace
                 using var checkReader = checkCommand.ExecuteReader();
                 if (!checkReader.Read())
                 {
+                    // Check if availability exists but is booked
+                    checkReader.Close();
+                    string checkBookedQuery = @"
+                        SELECT IsBooked 
+                        FROM TrainerAvailability 
+                        WHERE AvailabilityID = @availabilityId 
+                        AND IsDeleted = 0";
+                    
+                    using var bookedCommand = new MySqlCommand(checkBookedQuery, connection);
+                    bookedCommand.Parameters.AddWithValue("@availabilityId", request.AvailabilityId);
+                    var bookedResult = bookedCommand.ExecuteScalar();
+                    
+                    if (bookedResult != null && Convert.ToBoolean(bookedResult))
+                    {
+                        return BadRequest(new
+                        {
+                            success = false,
+                            message = "This time slot has already been booked by another client. Please select a different time."
+                        });
+                    }
+                    
                     return BadRequest(new
                     {
                         success = false,
-                        message = "Availability not found or already booked"
+                        message = "This availability slot is no longer available. Please select a different time."
                     });
                 }
 
@@ -544,6 +566,174 @@ namespace MyApp.Namespace
                 {
                     success = false,
                     message = "An error occurred while booking session",
+                    error = ex.Message
+                });
+            }
+        }
+
+        [HttpPut("sessions/{id}/cancel")]
+        public IActionResult CancelSession(int id, [FromQuery] string email)
+        {
+            if (string.IsNullOrEmpty(email))
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Email is required"
+                });
+            }
+
+            try
+            {
+                using var connection = _dbUtility.GetConnection();
+                
+                // Get ClientID from email
+                int clientId = GetClientIdFromEmail(connection, email);
+                if (clientId == 0)
+                {
+                    return NotFound(new
+                    {
+                        success = false,
+                        message = "Client not found"
+                    });
+                }
+
+                // Verify session belongs to client and is not already cancelled/completed
+                string checkSessionQuery = @"
+                    SELECT SessionID, TrainerID, SpecialtyID, SessionDate, StartTime, Status
+                    FROM SessionBooking 
+                    WHERE SessionID = @sessionId 
+                    AND ClientID = @clientId 
+                    AND IsDeleted = 0";
+
+                using var checkCommand = new MySqlCommand(checkSessionQuery, connection);
+                checkCommand.Parameters.AddWithValue("@sessionId", id);
+                checkCommand.Parameters.AddWithValue("@clientId", clientId);
+
+                using var checkReader = checkCommand.ExecuteReader();
+                if (!checkReader.Read())
+                {
+                    return NotFound(new
+                    {
+                        success = false,
+                        message = "Session not found or does not belong to this client"
+                    });
+                }
+
+                string currentStatus = checkReader.GetString("Status");
+                int trainerId = checkReader.GetInt32("TrainerID");
+                int specialtyId = checkReader.GetInt32("SpecialtyID");
+                DateTime sessionDate = checkReader.GetDateTime("SessionDate");
+                TimeSpan startTime = checkReader.GetTimeSpan("StartTime");
+                checkReader.Close();
+
+                // Check if session can be cancelled
+                if (currentStatus == "Cancelled")
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        message = "Session is already cancelled"
+                    });
+                }
+
+                if (currentStatus == "Completed")
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        message = "Cannot cancel a completed session"
+                    });
+                }
+
+                // Update session status to Cancelled
+                string updateSessionQuery = @"
+                    UPDATE SessionBooking 
+                    SET Status = 'Cancelled', IsCancelled = 1 
+                    WHERE SessionID = @sessionId";
+
+                using var updateSessionCommand = new MySqlCommand(updateSessionQuery, connection);
+                updateSessionCommand.Parameters.AddWithValue("@sessionId", id);
+                updateSessionCommand.ExecuteNonQuery();
+
+                // Get day of week from session date (convert enum to string format used in DB)
+                Dictionary<DayOfWeek, string> dayMap = new Dictionary<DayOfWeek, string>
+                {
+                    { DayOfWeek.Monday, "Monday" },
+                    { DayOfWeek.Tuesday, "Tuesday" },
+                    { DayOfWeek.Wednesday, "Wednesday" },
+                    { DayOfWeek.Thursday, "Thursday" },
+                    { DayOfWeek.Friday, "Friday" },
+                    { DayOfWeek.Saturday, "Saturday" },
+                    { DayOfWeek.Sunday, "Sunday" }
+                };
+                string dayOfWeek = dayMap[sessionDate.DayOfWeek];
+                
+                // Find and free up the TrainerAvailability slot
+                string findAvailabilityQuery = @"
+                    SELECT AvailabilityID 
+                    FROM TrainerAvailability 
+                    WHERE TrainerID = @trainerId 
+                    AND SpecialtyID = @specialtyId 
+                    AND DayOfWeek = @dayOfWeek 
+                    AND StartTime = @startTime 
+                    AND IsDeleted = 0
+                    LIMIT 1";
+
+                using var findAvailCommand = new MySqlCommand(findAvailabilityQuery, connection);
+                findAvailCommand.Parameters.AddWithValue("@trainerId", trainerId);
+                findAvailCommand.Parameters.AddWithValue("@specialtyId", specialtyId);
+                findAvailCommand.Parameters.AddWithValue("@dayOfWeek", dayOfWeek);
+                findAvailCommand.Parameters.AddWithValue("@startTime", startTime);
+
+                var availabilityIdResult = findAvailCommand.ExecuteScalar();
+                if (availabilityIdResult != null)
+                {
+                    int availabilityId = Convert.ToInt32(availabilityIdResult);
+                    
+                    // Free up the availability slot
+                    string freeAvailabilityQuery = @"
+                        UPDATE TrainerAvailability 
+                        SET IsBooked = 0 
+                        WHERE AvailabilityID = @availabilityId";
+
+                    using var freeAvailCommand = new MySqlCommand(freeAvailabilityQuery, connection);
+                    freeAvailCommand.Parameters.AddWithValue("@availabilityId", availabilityId);
+                    freeAvailCommand.ExecuteNonQuery();
+                }
+
+                // Update payment status to Failed if payment was completed (for refund tracking)
+                string updatePaymentQuery = @"
+                    UPDATE Payments 
+                    SET Status = 'Failed' 
+                    WHERE SessionID = @sessionId 
+                    AND Status = 'Completed'";
+
+                using var updatePaymentCommand = new MySqlCommand(updatePaymentQuery, connection);
+                updatePaymentCommand.Parameters.AddWithValue("@sessionId", id);
+                updatePaymentCommand.ExecuteNonQuery();
+
+                return Ok(new
+                {
+                    success = true,
+                    message = "Session cancelled successfully"
+                });
+            }
+            catch (MySqlException ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "Database error occurred",
+                    error = ex.Message
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "An error occurred while cancelling session",
                     error = ex.Message
                 });
             }

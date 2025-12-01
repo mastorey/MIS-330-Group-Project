@@ -159,9 +159,13 @@ async function loadUserProfileData() {
     if (userRole === 'Trainer') {
       if (profileCertificationGroup) profileCertificationGroup.style.display = 'block';
       if (profileRateGroup) profileRateGroup.style.display = 'block';
+      // Load specialties for trainers
+      await loadTrainerSpecialties(userEmail);
     } else {
       if (profileCertificationGroup) profileCertificationGroup.style.display = 'none';
       if (profileRateGroup) profileRateGroup.style.display = 'none';
+      const profileSpecialtiesGroup = document.getElementById('profileSpecialtiesGroup');
+      if (profileSpecialtiesGroup) profileSpecialtiesGroup.style.display = 'none';
     }
 
     // Hide password field in read-only mode
@@ -252,6 +256,15 @@ function switchToEditMode() {
   // Show password field in edit mode
   if (profilePasswordGroup) profilePasswordGroup.style.display = 'block';
 
+  // Enable specialty checkboxes for trainers
+  const userRole = localStorage.getItem('userRole');
+  if (userRole === 'Trainer') {
+    const specialtyCheckboxes = document.querySelectorAll('#profileSpecialtiesContainer input[type="checkbox"]');
+    specialtyCheckboxes.forEach(checkbox => {
+      checkbox.removeAttribute('disabled');
+    });
+  }
+
   // Update modal title
   if (profileModalLabel) profileModalLabel.textContent = 'Edit Profile';
 
@@ -320,6 +333,15 @@ function switchToReadOnlyMode() {
   // Hide password field in read-only mode
   if (profilePasswordGroup) profilePasswordGroup.style.display = 'none';
 
+  // Disable specialty checkboxes in read-only mode
+  const userRole = localStorage.getItem('userRole');
+  if (userRole === 'Trainer') {
+    const specialtyCheckboxes = document.querySelectorAll('#profileSpecialtiesContainer input[type="checkbox"]');
+    specialtyCheckboxes.forEach(checkbox => {
+      checkbox.setAttribute('disabled', 'disabled');
+    });
+  }
+
   // Update modal title
   if (profileModalLabel) profileModalLabel.textContent = 'View Profile';
 
@@ -372,6 +394,10 @@ async function handleProfileSubmit(event) {
       const rateValue = parseFloat(rateInput.value);
       formData.rate = isNaN(rateValue) || rateValue < 0 ? null : rateValue;
     }
+    
+    // Get selected specialties
+    const specialtyCheckboxes = document.querySelectorAll('#profileSpecialtiesContainer input[type="checkbox"]:checked');
+    formData.specialtyIds = Array.from(specialtyCheckboxes).map(cb => parseInt(cb.value));
   }
 
   try {
@@ -419,14 +445,19 @@ async function handleProfileSubmit(event) {
         rate: formData.rate !== undefined && formData.rate !== null ? parseFloat(formData.rate) : (originalProfileValues.rate || 0.00)
       };
       
+      // Update specialties for trainers
+      if (userRole === 'Trainer' && formData.specialtyIds) {
+        await updateTrainerSpecialties(userEmail, formData.specialtyIds);
+      }
+      
       // Update profile image
       updateProfileImage();
       
       // Switch back to read-only mode
       switchToReadOnlyMode();
       
-      // Show success message
-      alert('Profile updated successfully!');
+      // Show success message in modal
+      showSuccessModal('Profile updated successfully!');
     } else {
       alert(data.message || 'Failed to update profile. Please try again.');
     }
@@ -479,9 +510,131 @@ async function handleDeleteAccount() {
 }
 
 /**
+ * Load trainer specialties (all available and trainer's current)
+ */
+async function loadTrainerSpecialties(userEmail) {
+  const profileSpecialtiesGroup = document.getElementById('profileSpecialtiesGroup');
+  const profileSpecialtiesContainer = document.getElementById('profileSpecialtiesContainer');
+  
+  if (!profileSpecialtiesGroup || !profileSpecialtiesContainer) return;
+  
+  profileSpecialtiesGroup.style.display = 'block';
+  profileSpecialtiesContainer.innerHTML = '<p class="text-muted mb-0">Loading specialties...</p>';
+  
+  try {
+    // Fetch all available specialties
+    const allSpecialtiesResponse = await fetch(`${API_BASE_URL}/trainer/all-specialties`);
+    if (!allSpecialtiesResponse.ok) {
+      const errorText = await allSpecialtiesResponse.text();
+      let errorMessage = 'Failed to fetch all specialties';
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.message || errorMessage;
+      } catch {
+        errorMessage = `HTTP ${allSpecialtiesResponse.status}: ${errorText || allSpecialtiesResponse.statusText}`;
+      }
+      throw new Error(errorMessage);
+    }
+    const allSpecialtiesData = await allSpecialtiesResponse.json();
+    if (!allSpecialtiesData.success) {
+      throw new Error(allSpecialtiesData.message || 'Failed to load specialties');
+    }
+    const allSpecialties = allSpecialtiesData.data || [];
+    
+    // Fetch trainer's current specialties (this is optional - if it fails, we just won't pre-check any)
+    let trainerSpecialtyIds = [];
+    try {
+      const trainerSpecialtiesResponse = await fetch(`${API_BASE_URL}/trainer/specialties?email=${encodeURIComponent(userEmail)}`);
+      if (trainerSpecialtiesResponse.ok) {
+        const trainerSpecialtiesData = await trainerSpecialtiesResponse.json();
+        if (trainerSpecialtiesData.success) {
+          trainerSpecialtyIds = trainerSpecialtiesData.data.map(s => s.specialtyId);
+        }
+      }
+    } catch (error) {
+      // If fetching trainer specialties fails, just continue without pre-checking
+      console.warn('Could not load trainer specialties:', error);
+    }
+    
+    // Build checkboxes
+    if (allSpecialties.length === 0) {
+      profileSpecialtiesContainer.innerHTML = '<p class="text-muted mb-0">No specialties available.</p>';
+      return;
+    }
+    
+    profileSpecialtiesContainer.innerHTML = '';
+    allSpecialties.forEach(specialty => {
+      const isChecked = trainerSpecialtyIds.includes(specialty.specialtyId);
+      const checkboxDiv = document.createElement('div');
+      checkboxDiv.className = 'form-check mb-2';
+      checkboxDiv.innerHTML = `
+        <input class="form-check-input" type="checkbox" value="${specialty.specialtyId}" id="specialty_${specialty.specialtyId}" ${isChecked ? 'checked' : ''} disabled>
+        <label class="form-check-label text-white" for="specialty_${specialty.specialtyId}">
+          ${specialty.specialtyName}
+        </label>
+      `;
+      profileSpecialtiesContainer.appendChild(checkboxDiv);
+    });
+  } catch (error) {
+    console.error('Error loading specialties:', error);
+    profileSpecialtiesContainer.innerHTML = '<p class="text-danger mb-0">Error loading specialties. Please try again.</p>';
+  }
+}
+
+/**
+ * Update trainer specialties
+ */
+async function updateTrainerSpecialties(userEmail, specialtyIds) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/trainer/specialties?email=${encodeURIComponent(userEmail)}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ specialtyIds }),
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'Failed to update specialties');
+    }
+    
+    const data = await response.json();
+    if (!data.success) {
+      throw new Error(data.message || 'Failed to update specialties');
+    }
+  } catch (error) {
+    console.error('Error updating specialties:', error);
+    alert('Profile updated, but there was an error updating specialties: ' + error.message);
+  }
+}
+
+/**
+ * Show success modal with message
+ */
+function showSuccessModal(message) {
+  const successModal = document.getElementById('successModal');
+  const successModalMessage = document.getElementById('successModalMessage');
+  
+  if (successModal && successModalMessage) {
+    successModalMessage.textContent = message;
+    const modal = new bootstrap.Modal(successModal);
+    modal.show();
+  } else {
+    // Fallback to alert if modal doesn't exist
+    alert(message);
+  }
+}
+
+/**
  * Handle logout
  */
 function handleLogout() {
+  // Show confirmation popup
+  if (!confirm('Are you sure you want to logout?')) {
+    return; // User clicked Cancel, do nothing
+  }
+  
   // Clear authentication state
   localStorage.clear();
   sessionStorage.clear();
