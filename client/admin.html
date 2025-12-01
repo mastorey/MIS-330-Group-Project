@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Create Account - VitalCore Fitness Marketplace</title>
+    <title>Admin Portal - VitalCore Fitness Marketplace</title>
 
     <!-- Bootstrap CSS -->
     <link
@@ -83,129 +83,85 @@
       </div>
     </nav>
 
+    <!-- Hero Section -->
+    <section class="hero">
+      <div class="container">
+        <div class="row">
+          <div class="col-12 text-center">
+            <h1 class="hero-headline">Admin Portal</h1>
+            <p class="hero-subtext">
+              Manage session bookings, assign rooms to sessions, and view all session details.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Main Content -->
     <main class="container py-5">
-      <div class="row justify-content-center">
-        <div class="col-lg-6 col-md-8">
-          <div class="card shadow-lg">
-            <div class="card-body p-4">
-              <h2 class="card-title text-center mb-4">Create Client Account</h2>
-              <p class="text-center text-secondary mb-4">
-                Join VitalCore Fitness Marketplace and start booking certified trainers today.
-              </p>
+      <!-- Tab Navigation -->
+      <ul class="nav nav-tabs mb-4" id="adminTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active" id="roomAssignment-tab" data-bs-toggle="tab" data-bs-target="#roomAssignmentTab" type="button" role="tab" aria-controls="roomAssignmentTab" aria-selected="true" onclick="loadUnassignedSessions()">
+            Room Assignment
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="allSessions-tab" data-bs-toggle="tab" data-bs-target="#allSessionsTab" type="button" role="tab" aria-controls="allSessionsTab" aria-selected="false" onclick="loadAllSessions()">
+            All Sessions
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="reports-tab" data-bs-toggle="tab" data-bs-target="#reportsTab" type="button" role="tab" aria-controls="reportsTab" aria-selected="false">
+            Reports
+          </button>
+        </li>
+      </ul>
 
-              <form id="signupForm" novalidate>
-                <!-- First Name -->
-                <div class="mb-3">
-                  <label for="firstName" class="form-label">First Name <span class="text-danger">*</span></label>
-                  <input
-                    type="text"
-                    class="form-control"
-                    id="firstName"
-                    name="firstName"
-                    placeholder="Enter your first name"
-                    required
-                  />
-                  <div class="invalid-feedback">Please provide your first name.</div>
-                </div>
+      <!-- Tab Content -->
+      <div class="tab-content" id="adminTabContent">
+        <!-- Room Assignment Tab -->
+        <div class="tab-pane fade show active" id="roomAssignmentTab" role="tabpanel" aria-labelledby="roomAssignment-tab">
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <h5 class="card-title mb-4">Room Assignment</h5>
+              <p class="card-text text-muted mb-3">Assign rooms to sessions that haven't been assigned yet. Only rooms compatible with the session's specialty and available at the session time will be shown.</p>
+              <!-- Unassigned sessions data will be displayed here -->
+              <div id="unassignedSessionsData" class="mt-3">
+                <p class="text-white">Loading unassigned sessions...</p>
+              </div>
+            </div>
+          </div>
+        </div>
 
-                <!-- Last Name -->
-                <div class="mb-3">
-                  <label for="lastName" class="form-label">Last Name <span class="text-danger">*</span></label>
-                  <input
-                    type="text"
-                    class="form-control"
-                    id="lastName"
-                    name="lastName"
-                    placeholder="Enter your last name"
-                    required
-                  />
-                  <div class="invalid-feedback">Please provide your last name.</div>
-                </div>
+        <!-- All Sessions Tab -->
+        <div class="tab-pane fade" id="allSessionsTab" role="tabpanel" aria-labelledby="allSessions-tab">
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <h5 class="card-title mb-4">All Sessions</h5>
+              <p class="card-text text-muted mb-3">View all session bookings with complete details including room assignments, payment status, and booking information.</p>
+              <!-- All sessions data will be displayed here -->
+              <div id="allSessionsData" class="mt-3">
+                <p class="text-white">Loading all sessions...</p>
+              </div>
+            </div>
+          </div>
+        </div>
 
-                <!-- Email -->
-                <div class="mb-3">
-                  <label for="email" class="form-label">Email <span class="text-danger">*</span></label>
-                  <input
-                    type="email"
-                    class="form-control"
-                    id="email"
-                    name="email"
-                    placeholder="example@email.com"
-                    required
-                  />
-                  <div class="invalid-feedback">Please provide a valid email address.</div>
-                </div>
-
-                <!-- Phone Number -->
-                <div class="mb-3">
-                  <label for="phone" class="form-label">Phone Number <span class="text-danger">*</span></label>
-                  <input
-                    type="tel"
-                    class="form-control"
-                    id="phone"
-                    name="phone"
-                    placeholder="123-456-7890"
-                    pattern="[0-9]{3}-[0-9]{3}-[0-9]{4}|[0-9]{10}"
-                    required
-                  />
-                  <div class="invalid-feedback">Please provide a valid phone number (###-###-#### or 10 digits).</div>
-                  <small class="form-text text-muted">Format: ###-###-#### or 10 digits</small>
-                </div>
-
-                <!-- Birthday -->
-                <div class="mb-3">
-                  <label for="birthday" class="form-label">Birthday <span class="text-danger">*</span></label>
-                  <input
-                    type="date"
-                    class="form-control"
-                    id="birthday"
-                    name="birthday"
-                    required
-                  />
-                  <div class="invalid-feedback">Please provide your birthday.</div>
-                  <small class="form-text text-muted">Must be 18 years or older</small>
-                </div>
-
-                <!-- Password -->
-                <div class="mb-3">
-                  <label for="password" class="form-label">Password <span class="text-danger">*</span></label>
-                  <input
-                    type="password"
-                    class="form-control"
-                    id="password"
-                    name="password"
-                    placeholder="Create a secure password"
-                    required
-                    minlength="6"
-                  />
-                  <div class="invalid-feedback">Password must be at least 6 characters long.</div>
-                </div>
-
-                <!-- Confirm Password -->
-                <div class="mb-4">
-                  <label for="confirmPassword" class="form-label">Confirm Password <span class="text-danger">*</span></label>
-                  <input
-                    type="password"
-                    class="form-control"
-                    id="confirmPassword"
-                    name="confirmPassword"
-                    placeholder="Re-enter your password"
-                    required
-                  />
-                  <div class="invalid-feedback">Passwords do not match.</div>
-                </div>
-
-                <!-- Submit Button -->
-                <div class="d-grid">
-                  <button type="submit" class="btn btn-primary btn-lg">Create Account</button>
-                </div>
-              </form>
-
+        <!-- Reports Tab -->
+        <div class="tab-pane fade" id="reportsTab" role="tabpanel" aria-labelledby="reports-tab">
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <h5 class="card-title mb-4">Reports</h5>
+              <p class="card-text text-muted mb-3">Reports functionality will be available here in a future update.</p>
+              <div class="alert alert-info">
+                <p class="mb-0">Reports feature coming soon.</p>
+              </div>
             </div>
           </div>
         </div>
       </div>
+
     </main>
 
     <!-- Bootstrap JS bundle -->
@@ -253,28 +209,6 @@
                 <div class="invalid-feedback">Please provide your birthday.</div>
               </div>
 
-              <!-- Phone (Client and Trainer only) -->
-              <div class="mb-3" id="profilePhoneGroup" style="display: none;">
-                <label for="profilePhone" class="form-label">Phone Number</label>
-                <input type="tel" class="form-control" id="profilePhone" pattern="[0-9]{3}-[0-9]{3}-[0-9]{4}|[0-9]{10}" readonly />
-                <div class="invalid-feedback">Please provide a valid phone number.</div>
-                <small class="form-text text-muted">Format: ###-###-#### or 10 digits</small>
-              </div>
-
-              <!-- Certification (Trainer only) -->
-              <div class="mb-3" id="profileCertificationGroup" style="display: none;">
-                <label for="profileCertification" class="form-label">Certification</label>
-                <input type="text" class="form-control" id="profileCertification" placeholder="e.g., NASM-CPT, ACE-CPT" readonly />
-              </div>
-
-              <!-- Rate per Hour (Trainer only) -->
-              <div class="mb-3" id="profileRateGroup" style="display: none;">
-                <label for="profileRate" class="form-label">Rate per Hour ($)</label>
-                <input type="number" class="form-control" id="profileRate" step="0.01" min="0" placeholder="0.00" readonly />
-                <div class="invalid-feedback">Please provide a valid rate (must be 0 or greater).</div>
-                <small class="form-text text-muted">Your hourly training rate</small>
-              </div>
-
               <!-- Password -->
               <div class="mb-3" id="profilePasswordGroup">
                 <label for="profilePassword" class="form-label">New Password</label>
@@ -304,7 +238,7 @@
     </div>
 
     <!-- Custom JS -->
-    <script src="./scripts/signup.js"></script>
+    <script src="./scripts/admin.js"></script>
     <script src="./scripts/profile.js"></script>
   </body>
 </html>

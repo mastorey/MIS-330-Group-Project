@@ -38,6 +38,7 @@ function updateNavbarAuthState() {
   const logoutNav = document.getElementById('logoutNav');
   const trainerPortalNavItem = document.getElementById('trainerPortalNavItem');
   const clientPortalNavItem = document.getElementById('clientPortalNavItem');
+  const adminPortalNavItem = document.getElementById('adminPortalNavItem');
   const findTrainersNav = document.getElementById('findTrainersNav');
   const mySessionsNav = document.getElementById('mySessionsNav');
 
@@ -65,6 +66,9 @@ function updateNavbarAuthState() {
     if (clientPortalNavItem) {
       clientPortalNavItem.style.display = (userRole === 'Client') ? 'block' : 'none';
     }
+    if (adminPortalNavItem) {
+      adminPortalNavItem.style.display = (userRole === 'Admin') ? 'block' : 'none';
+    }
   } else {
     // Show login/create account
     if (createAccountNav) createAccountNav.style.display = 'block';
@@ -77,6 +81,7 @@ function updateNavbarAuthState() {
     // Hide portal links
     if (trainerPortalNavItem) trainerPortalNavItem.style.display = 'none';
     if (clientPortalNavItem) clientPortalNavItem.style.display = 'none';
+    if (adminPortalNavItem) adminPortalNavItem.style.display = 'none';
     
     // Hide default nav items when not logged in (they're not in simplified navbar)
     if (findTrainersNav) findTrainersNav.style.display = 'none';
