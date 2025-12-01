@@ -188,13 +188,13 @@ async function loadFindSessions() {
     findSessionsDataContainer.innerHTML = `
       <div class="mb-4">
         <div class="row g-3">
-          <div class="col-md-3">
+          <div class="col-md-2">
             <label for="sortSpecialty" class="form-label">Sort by Specialty</label>
             <select class="form-select" id="sortSpecialty" onchange="applySorting()">
               <option value="">All Specialties</option>
             </select>
           </div>
-          <div class="col-md-3">
+          <div class="col-md-2">
             <label for="sortTime" class="form-label">Sort by Time</label>
             <select class="form-select" id="sortTime" onchange="applySorting()">
               <option value="">All Times</option>
@@ -203,7 +203,7 @@ async function loadFindSessions() {
               <option value="evening">Evening (5 PM - 9 PM)</option>
             </select>
           </div>
-          <div class="col-md-3">
+          <div class="col-md-2">
             <label for="sortDay" class="form-label">Sort by Day</label>
             <select class="form-select" id="sortDay" onchange="applySorting()">
               <option value="">All Days</option>
@@ -216,11 +216,19 @@ async function loadFindSessions() {
               <option value="Sunday">Sunday</option>
             </select>
           </div>
-          <div class="col-md-3">
+          <div class="col-md-2">
             <label for="sortTrainer" class="form-label">Sort by Trainer</label>
             <select class="form-select" id="sortTrainer" onchange="applySorting()">
               <option value="">All Trainers</option>
             </select>
+          </div>
+          <div class="col-md-2">
+            <label for="minPrice" class="form-label">Min Price ($)</label>
+            <input type="number" class="form-control" id="minPrice" step="0.01" min="0" placeholder="0.00" onchange="applySorting()" />
+          </div>
+          <div class="col-md-2">
+            <label for="maxPrice" class="form-label">Max Price ($)</label>
+            <input type="number" class="form-control" id="maxPrice" step="0.01" min="0" placeholder="No limit" onchange="applySorting()" />
           </div>
         </div>
       </div>
@@ -282,6 +290,8 @@ function renderSessionsCards(sessions) {
   container.innerHTML = sessions.map(session => {
     const formattedDate = formatDate(session.calculatedDate);
     const formattedTime = formatTime(session.startTime);
+    const sessionRate = session.rate !== undefined && session.rate !== null ? parseFloat(session.rate) : 90.00;
+    const formattedRate = formatCurrency(sessionRate);
     
     return `
       <div class="col-md-6 col-lg-4">
@@ -292,7 +302,8 @@ function renderSessionsCards(sessions) {
               <strong>Specialty:</strong> ${session.specialtyName}<br>
               <strong>Day:</strong> ${session.dayOfWeek}<br>
               <strong>Time:</strong> ${formattedTime}<br>
-              <strong>Date:</strong> ${formattedDate}
+              <strong>Date:</strong> ${formattedDate}<br>
+              <strong class="text-primary">Price:</strong> ${formattedRate}
             </p>
             <button class="btn btn-primary w-100" onclick="bookSession(${session.availabilityId}, '${session.calculatedDate}', '${session.trainerName}', '${session.specialtyName}', '${session.dayOfWeek}', '${formattedTime}', '${formattedDate}')">
               Book Session
@@ -314,6 +325,10 @@ function applySorting() {
   const timeFilter = document.getElementById('sortTime')?.value || '';
   const dayFilter = document.getElementById('sortDay')?.value || '';
   const trainerFilter = document.getElementById('sortTrainer')?.value || '';
+  const minPriceInput = document.getElementById('minPrice');
+  const maxPriceInput = document.getElementById('maxPrice');
+  const minPrice = minPriceInput?.value ? parseFloat(minPriceInput.value) : null;
+  const maxPrice = maxPriceInput?.value ? parseFloat(maxPriceInput.value) : null;
   
   let filtered = [...window.availableSessions];
   
@@ -341,6 +356,16 @@ function applySorting() {
       if (timeFilter === 'morning') return hour >= 6 && hour < 12;
       if (timeFilter === 'afternoon') return hour >= 12 && hour < 17;
       if (timeFilter === 'evening') return hour >= 17 && hour < 21;
+      return true;
+    });
+  }
+  
+  // Filter by price range
+  if (minPrice !== null || maxPrice !== null) {
+    filtered = filtered.filter(s => {
+      const sessionRate = s.rate !== undefined && s.rate !== null ? parseFloat(s.rate) : 90.00;
+      if (minPrice !== null && sessionRate < minPrice) return false;
+      if (maxPrice !== null && sessionRate > maxPrice) return false;
       return true;
     });
   }

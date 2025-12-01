@@ -293,7 +293,8 @@ namespace MyApp.Namespace
                         ta.SpecialtyID,
                         s.SpecialtyName,
                         ta.DayOfWeek,
-                        ta.StartTime
+                        ta.StartTime,
+                        COALESCE(t.Rate, 90.00) AS Rate
                     FROM TrainerAvailability ta
                     INNER JOIN Trainers t ON ta.TrainerID = t.TrainerID
                     INNER JOIN Users u ON t.TrainerID = u.UserID
@@ -342,6 +343,7 @@ namespace MyApp.Namespace
                     
                     if (calculatedDate != DateTime.MinValue)
                     {
+                        var rate = reader.IsDBNull(reader.GetOrdinal("Rate")) ? 90.00m : reader.GetDecimal(reader.GetOrdinal("Rate"));
                         availabilityList.Add(new
                         {
                             availabilityId = availabilityId,
@@ -351,7 +353,8 @@ namespace MyApp.Namespace
                             specialtyName = reader.GetString("SpecialtyName"),
                             dayOfWeek = dayOfWeek,
                             startTime = startTime,
-                            calculatedDate = calculatedDate.ToString("yyyy-MM-dd")
+                            calculatedDate = calculatedDate.ToString("yyyy-MM-dd"),
+                            rate = rate
                         });
                     }
                 }
