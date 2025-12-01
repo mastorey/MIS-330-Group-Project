@@ -263,6 +263,233 @@ namespace MyApp.Namespace
                 });
             }
         }
+
+        [HttpGet("profile")]
+        public IActionResult GetProfile([FromQuery] string email)
+        {
+            if (string.IsNullOrEmpty(email))
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Email is required"
+                });
+            }
+
+            try
+            {
+                using var connection = _dbUtility.GetConnection();
+                
+                // Query user by email with role-specific data
+                string query = @"
+                    SELECT 
+                        u.UserID,
+                        u.Email,
+                        u.FirstName,
+                        u.LastName,
+                        u.Birthday,
+                        u.UserType,
+                        CASE 
+                            WHEN u.UserType = 'Client' THEN c.Phone
+                            WHEN u.UserType = 'Trainer' THEN t.Phone
+                            ELSE NULL
+                        END AS Phone,
+                        CASE 
+                            WHEN u.UserType = 'Trainer' THEN t.Certification
+                            ELSE NULL
+                        END AS Certification
+                    FROM Users u
+                    LEFT JOIN Clients c ON u.UserID = c.ClientID AND u.UserType = 'Client'
+                    LEFT JOIN Trainers t ON u.UserID = t.TrainerID AND u.UserType = 'Trainer'
+                    WHERE u.Email = @email AND u.IsDeleted = 0";
+
+                using var command = new MySqlCommand(query, connection);
+                command.Parameters.AddWithValue("@email", email.ToLower().Trim());
+
+                using var reader = command.ExecuteReader();
+                
+                if (!reader.Read())
+                {
+                    return NotFound(new
+                    {
+                        success = false,
+                        message = "User not found"
+                    });
+                }
+
+                // Build response
+                int birthdayOrdinal = reader.GetOrdinal("Birthday");
+                var profile = new
+                {
+                    success = true,
+                    email = reader.GetString("Email"),
+                    firstName = reader.IsDBNull(reader.GetOrdinal("FirstName")) ? "" : reader.GetString("FirstName"),
+                    lastName = reader.IsDBNull(reader.GetOrdinal("LastName")) ? "" : reader.GetString("LastName"),
+                    birthday = reader.IsDBNull(birthdayOrdinal) ? "" : reader.GetDateTime(birthdayOrdinal).ToString("yyyy-MM-dd"),
+                    userType = reader.GetString("UserType"),
+                    phone = reader.IsDBNull(reader.GetOrdinal("Phone")) ? null : reader.GetString("Phone"),
+                    certification = reader.IsDBNull(reader.GetOrdinal("Certification")) ? null : reader.GetString("Certification")
+                };
+
+                return Ok(profile);
+            }
+            catch (MySqlException ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "Database error occurred",
+                    error = ex.Message
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "An error occurred while fetching profile",
+                    error = ex.Message
+                });
+            }
+        }
+
+        [HttpPut("profile/update")]
+        public IActionResult UpdateProfile([FromBody] ProfileUpdateRequest request)
+        {
+            if (string.IsNullOrEmpty(request.Email))
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Email is required"
+                });
+            }
+
+            try
+            {
+                using var connection = _dbUtility.GetConnection();
+                
+                // First, get the user's UserType and UserID
+                string getUserQuery = "SELECT UserID, UserType FROM Users WHERE Email = @email AND IsDeleted = 0";
+                int userId = 0;
+                string userType = "";
+                
+                using (var getUserCommand = new MySqlCommand(getUserQuery, connection))
+                {
+                    getUserCommand.Parameters.AddWithValue("@email", request.Email.ToLower().Trim());
+                    using var getUserReader = getUserCommand.ExecuteReader();
+                    
+                    if (!getUserReader.Read())
+                    {
+                        return NotFound(new
+                        {
+                            success = false,
+                            message = "User not found"
+                        });
+                    }
+                    
+                    userId = getUserReader.GetInt32("UserID");
+                    userType = getUserReader.GetString("UserType");
+                }
+
+                // Update Users table
+                string updateUserQuery = @"
+                    UPDATE Users 
+                    SET FirstName = @firstName,
+                        LastName = @lastName,
+                        Birthday = @birthday";
+                
+                if (!string.IsNullOrEmpty(request.Password))
+                {
+                    updateUserQuery += ", Password = @password";
+                }
+                
+                updateUserQuery += " WHERE UserID = @userId";
+
+                using var updateUserCommand = new MySqlCommand(updateUserQuery, connection);
+                updateUserCommand.Parameters.AddWithValue("@firstName", request.FirstName?.Trim() ?? "");
+                updateUserCommand.Parameters.AddWithValue("@lastName", request.LastName?.Trim() ?? "");
+                updateUserCommand.Parameters.AddWithValue("@birthday", string.IsNullOrEmpty(request.Birthday) 
+                    ? (object)DBNull.Value 
+                    : DateTime.Parse(request.Birthday));
+                updateUserCommand.Parameters.AddWithValue("@userId", userId);
+                
+                if (!string.IsNullOrEmpty(request.Password))
+                {
+                    updateUserCommand.Parameters.AddWithValue("@password", request.Password);
+                }
+
+                int userRowsAffected = updateUserCommand.ExecuteNonQuery();
+
+                if (userRowsAffected == 0)
+                {
+                    return StatusCode(500, new
+                    {
+                        success = false,
+                        message = "Failed to update user profile"
+                    });
+                }
+
+                // Update role-specific tables
+                if (userType == "Client" || userType == "Trainer")
+                {
+                    string updatePhoneQuery = "";
+                    if (userType == "Client")
+                    {
+                        updatePhoneQuery = "UPDATE Clients SET Phone = @phone WHERE ClientID = @userId";
+                    }
+                    else if (userType == "Trainer")
+                    {
+                        updatePhoneQuery = "UPDATE Trainers SET Phone = @phone WHERE TrainerID = @userId";
+                    }
+
+                    if (!string.IsNullOrEmpty(updatePhoneQuery))
+                    {
+                        using var updatePhoneCommand = new MySqlCommand(updatePhoneQuery, connection);
+                        updatePhoneCommand.Parameters.AddWithValue("@phone", string.IsNullOrEmpty(request.Phone) 
+                            ? (object)DBNull.Value 
+                            : request.Phone.Trim());
+                        updatePhoneCommand.Parameters.AddWithValue("@userId", userId);
+                        updatePhoneCommand.ExecuteNonQuery();
+                    }
+                }
+
+                if (userType == "Trainer" && request.Certification != null)
+                {
+                    string updateCertQuery = "UPDATE Trainers SET Certification = @certification WHERE TrainerID = @userId";
+                    using var updateCertCommand = new MySqlCommand(updateCertQuery, connection);
+                    updateCertCommand.Parameters.AddWithValue("@certification", string.IsNullOrEmpty(request.Certification) 
+                        ? (object)DBNull.Value 
+                        : request.Certification.Trim());
+                    updateCertCommand.Parameters.AddWithValue("@userId", userId);
+                    updateCertCommand.ExecuteNonQuery();
+                }
+
+                return Ok(new
+                {
+                    success = true,
+                    message = "Profile updated successfully"
+                });
+            }
+            catch (MySqlException ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "Database error occurred",
+                    error = ex.Message
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "An error occurred while updating profile",
+                    error = ex.Message
+                });
+            }
+        }
     }
 
     public class LoginRequest
@@ -280,6 +507,17 @@ namespace MyApp.Namespace
         public string Birthday { get; set; } = string.Empty;
         public string UserType { get; set; } = string.Empty;
         public string? Phone { get; set; }
+    }
+
+    public class ProfileUpdateRequest
+    {
+        public string Email { get; set; } = string.Empty;
+        public string? FirstName { get; set; }
+        public string? LastName { get; set; }
+        public string? Birthday { get; set; }
+        public string? Password { get; set; }
+        public string? Phone { get; set; }
+        public string? Certification { get; set; }
     }
 }
 

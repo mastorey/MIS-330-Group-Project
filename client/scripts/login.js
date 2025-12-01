@@ -43,6 +43,13 @@ document.addEventListener('DOMContentLoaded', () => {
       const roleDisplay = role.charAt(0).toUpperCase() + role.slice(1);
       const userName = data.firstName ? `${data.firstName} ${data.lastName}`.trim() : email;
       
+      // Store authentication state in localStorage (persists across page refreshes)
+      localStorage.setItem('isAuthenticated', 'true');
+      localStorage.setItem('userRole', role);
+      localStorage.setItem('userEmail', email);
+      localStorage.setItem('userFirstName', data.firstName || '');
+      localStorage.setItem('userLastName', data.lastName || '');
+      
       // Display success message
       errorMessage.className = 'alert alert-success';
       errorMessage.textContent = `Successfully logged in as a ${roleDisplay}. Welcome, ${userName}!`;
@@ -52,14 +59,18 @@ document.addEventListener('DOMContentLoaded', () => {
       loginForm.reset();
       loginForm.classList.remove('was-validated');
 
-      // Note: In the future, you would redirect here:
-      // if (role === 'trainer') {
-      //   window.location.href = './trainer.html';
-      // } else if (role === 'client') {
-      //   window.location.href = './client.html';
-      // } else if (role === 'admin') {
-      //   window.location.href = './admin.html';
-      // }
+      // Redirect based on role (navbar will update automatically on new page load)
+      setTimeout(() => {
+        if (role.toLowerCase() === 'trainer') {
+          window.location.href = './trainer.html';
+        } else if (role.toLowerCase() === 'client') {
+          window.location.href = './index.html';
+        } else if (role.toLowerCase() === 'admin') {
+          window.location.href = './index.html';
+        } else {
+          window.location.href = './index.html';
+        }
+      }, 1500);
 
     } catch (error) {
       // Display error message
