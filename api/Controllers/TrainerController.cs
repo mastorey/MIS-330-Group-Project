@@ -104,6 +104,61 @@ namespace MyApp.Namespace
             }
         }
 
+        [HttpGet("all-specialties")]
+        public IActionResult GetAllSpecialties()
+        {
+            try
+            {
+                using var connection = _dbUtility.GetConnection();
+                
+                string query = @"
+                    SELECT 
+                        SpecialtyID,
+                        SpecialtyName
+                    FROM Specialties
+                    WHERE IsDeleted = 0
+                    ORDER BY SpecialtyName";
+
+                using var command = new MySqlCommand(query, connection);
+                using var reader = command.ExecuteReader();
+                var specialtiesList = new List<object>();
+
+                while (reader.Read())
+                {
+                    var specialty = new
+                    {
+                        specialtyId = reader.GetInt32("SpecialtyID"),
+                        specialtyName = reader.GetString("SpecialtyName")
+                    };
+                    specialtiesList.Add(specialty);
+                }
+
+                return Ok(new
+                {
+                    success = true,
+                    data = specialtiesList
+                });
+            }
+            catch (MySqlException ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "Database error occurred",
+                    error = ex.Message
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "An error occurred while fetching specialties",
+                    error = ex.Message
+                });
+            }
+        }
+
         [HttpGet("specialties")]
         public IActionResult GetSpecialties([FromQuery] string email)
         {
@@ -180,6 +235,125 @@ namespace MyApp.Namespace
                 {
                     success = false,
                     message = "An error occurred while fetching specialties",
+                    error = ex.Message
+                });
+            }
+        }
+
+        [HttpPut("specialties")]
+        public IActionResult UpdateSpecialties([FromBody] SpecialtiesUpdateRequest request, [FromQuery] string email)
+        {
+            if (string.IsNullOrEmpty(email))
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Email is required"
+                });
+            }
+
+            if (request.SpecialtyIds == null || request.SpecialtyIds.Count == 0)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "At least one specialty must be selected"
+                });
+            }
+
+            try
+            {
+                using var connection = _dbUtility.GetConnection();
+                
+                // Get TrainerID from email
+                int trainerId = GetTrainerIdFromEmail(connection, email);
+                if (trainerId == 0)
+                {
+                    return NotFound(new
+                    {
+                        success = false,
+                        message = "Trainer not found"
+                    });
+                }
+
+                // Validate all specialty IDs exist and are not deleted
+                foreach (int specialtyId in request.SpecialtyIds)
+                {
+                    using var checkCommand = new MySqlCommand("SELECT COUNT(*) FROM Specialties WHERE SpecialtyID = @specialtyId AND IsDeleted = 0", connection);
+                    checkCommand.Parameters.AddWithValue("@specialtyId", specialtyId);
+                    int count = Convert.ToInt32(checkCommand.ExecuteScalar());
+                    
+                    if (count == 0)
+                    {
+                        return BadRequest(new
+                        {
+                            success = false,
+                            message = $"Specialty ID {specialtyId} does not exist or is deleted"
+                        });
+                    }
+                }
+
+                // Soft delete all existing trainer specialties
+                using var deleteCommand = new MySqlCommand(
+                    "UPDATE TrainerSpecialties SET IsDeleted = 1 WHERE TrainerID = @trainerId", 
+                    connection);
+                deleteCommand.Parameters.AddWithValue("@trainerId", trainerId);
+                deleteCommand.ExecuteNonQuery();
+
+                // Insert new specialties
+                foreach (int specialtyId in request.SpecialtyIds)
+                {
+                    // Check if specialty already exists (soft deleted)
+                    using var checkExistingCommand = new MySqlCommand(
+                        "SELECT COUNT(*) FROM TrainerSpecialties WHERE TrainerID = @trainerId AND SpecialtyID = @specialtyId",
+                        connection);
+                    checkExistingCommand.Parameters.AddWithValue("@trainerId", trainerId);
+                    checkExistingCommand.Parameters.AddWithValue("@specialtyId", specialtyId);
+                    int existingCount = Convert.ToInt32(checkExistingCommand.ExecuteScalar());
+
+                    if (existingCount > 0)
+                    {
+                        // Restore soft deleted specialty
+                        using var restoreCommand = new MySqlCommand(
+                            "UPDATE TrainerSpecialties SET IsDeleted = 0 WHERE TrainerID = @trainerId AND SpecialtyID = @specialtyId",
+                            connection);
+                        restoreCommand.Parameters.AddWithValue("@trainerId", trainerId);
+                        restoreCommand.Parameters.AddWithValue("@specialtyId", specialtyId);
+                        restoreCommand.ExecuteNonQuery();
+                    }
+                    else
+                    {
+                        // Insert new specialty
+                        using var insertCommand = new MySqlCommand(
+                            "INSERT INTO TrainerSpecialties (TrainerID, SpecialtyID, IsDeleted, CreatedAt) VALUES (@trainerId, @specialtyId, 0, NOW())",
+                            connection);
+                        insertCommand.Parameters.AddWithValue("@trainerId", trainerId);
+                        insertCommand.Parameters.AddWithValue("@specialtyId", specialtyId);
+                        insertCommand.ExecuteNonQuery();
+                    }
+                }
+
+                return Ok(new
+                {
+                    success = true,
+                    message = "Specialties updated successfully"
+                });
+            }
+            catch (MySqlException ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "Database error occurred",
+                    error = ex.Message
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "An error occurred while updating specialties",
                     error = ex.Message
                 });
             }
@@ -710,6 +884,11 @@ namespace MyApp.Namespace
         public string? DayOfWeek { get; set; }
         public string? StartTime { get; set; }
         public int? SpecialtyId { get; set; }
+    }
+
+    public class SpecialtiesUpdateRequest
+    {
+        public List<int> SpecialtyIds { get; set; } = new List<int>();
     }
 }
 
