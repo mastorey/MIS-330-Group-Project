@@ -156,6 +156,11 @@ namespace MyApp.Namespace
                     LEFT JOIN Rooms r ON sb.RoomID = r.RoomID
                     LEFT JOIN Payments p ON sb.SessionID = p.SessionID AND p.IsDeleted = 0
                     WHERE sb.IsDeleted = 0
+                    AND t.IsDeleted = 0
+                    AND c.IsDeleted = 0
+                    AND ut.IsDeleted = 0
+                    AND uc.IsDeleted = 0
+                    AND s.IsDeleted = 0
                     ORDER BY sb.SessionDate ASC, sb.StartTime ASC";
 
                 using var command = new MySqlCommand(query, connection);
@@ -633,7 +638,8 @@ namespace MyApp.Namespace
                     GROUP BY s.SpecialtyID, s.SpecialtyName
                     ORDER BY TotalRevenue DESC";
 
-                return ExecuteReportQuery(connection, query, "Specialty Performance");
+                var result = ExecuteReportQuery(connection, query, "Specialty Performance");
+                return result;
             }
             catch (Exception ex)
             {
@@ -700,7 +706,8 @@ namespace MyApp.Namespace
                     GROUP BY DATE_FORMAT(sb.SessionDate, '%Y-%m')
                     ORDER BY YearMonth DESC";
 
-                return ExecuteReportQuery(connection, query, "Revenue Trends");
+                var result = ExecuteReportQuery(connection, query, "Revenue Trends");
+                return result;
             }
             catch (Exception ex)
             {
@@ -733,7 +740,8 @@ namespace MyApp.Namespace
                     GROUP BY u.UserID, u.FirstName, u.LastName, u.Email, c.JoinDate
                     ORDER BY TotalAmountSpent DESC";
 
-                return ExecuteReportQuery(connection, query, "Client Activity");
+                var result = ExecuteReportQuery(connection, query, "Client Activity");
+                return result;
             }
             catch (Exception ex)
             {

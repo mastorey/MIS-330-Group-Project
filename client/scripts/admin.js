@@ -130,11 +130,15 @@ async function loadUnassignedSessions() {
     const tbody = document.getElementById('unassignedSessionsTableBody');
     
     // Load rooms for each session and render rows
+    // Build HTML string first to avoid O(n²) complexity from innerHTML +=
+    let rowsHtml = '';
     for (const session of sessionsList) {
       const availableRooms = await loadAvailableRooms(session.sessionId, session.sessionDate, session.startTime, session.specialtyId);
       const row = createUnassignedSessionRow(session, availableRooms);
-      tbody.innerHTML += row;
+      rowsHtml += row;
     }
+    // Set innerHTML once after building all rows
+    tbody.innerHTML = rowsHtml;
     
   } catch (error) {
     console.error('Error loading unassigned sessions data:', error);
