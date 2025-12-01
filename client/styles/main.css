@@ -132,7 +132,7 @@ main {
 }
 
 .form-text {
-  color: var(--gym-text-secondary);
+  color: var(--gym-text) !important;
 }
 
 .btn-primary {
@@ -281,4 +281,75 @@ main {
 /* Smooth scrolling */
 html {
   scroll-behavior: smooth;
+}
+
+/* Profile Image Styling */
+.profile-image {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--gym-accent) 0%, var(--gym-accent-light) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 2px solid rgba(255, 107, 53, 0.5);
+  margin: 0 0.5rem;
+}
+
+.profile-image:hover {
+  transform: scale(1.1);
+  box-shadow: 0 0 15px rgba(255, 107, 53, 0.5);
+  border-color: var(--gym-accent);
+}
+
+.profile-image span {
+  color: var(--gym-text);
+  font-weight: 700;
+  font-size: 1rem;
+  text-transform: uppercase;
+}
+
+/* Modal Styling */
+.modal-content {
+  background: var(--gym-card-bg) !important;
+  border: 1px solid rgba(255, 107, 53, 0.3);
+  color: var(--gym-text);
+}
+
+.modal-header {
+  border-bottom: 1px solid rgba(255, 107, 53, 0.3);
+}
+
+.modal-title {
+  color: var(--gym-text);
+}
+
+.modal-footer {
+  border-top: 1px solid rgba(255, 107, 53, 0.3);
+}
+
+.btn-close {
+  filter: invert(1);
+}
+
+/* Transparent Edit Button Styling */
+.btn-outline-primary {
+  background: transparent;
+  border: 2px solid var(--gym-accent);
+  color: var(--gym-accent);
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.btn-outline-primary:hover {
+  background: rgba(255, 107, 53, 0.1);
+  border-color: var(--gym-accent-light);
+  color: var(--gym-accent-light);
+  transform: translateY(-1px);
+}
+
+.btn-outline-primary:focus {
+  box-shadow: 0 0 0 0.2rem rgba(255, 107, 53, 0.25);
 }

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Create Trainer Account - VitalCore Fitness Marketplace</title>
+    <title>Trainer Portal - VitalCore Fitness Marketplace</title>
 
     <!-- Bootstrap CSS -->
     <link
@@ -48,6 +48,10 @@
             <li class="nav-item">
               <a class="nav-link" href="/sessions">My Sessions</a>
             </li>
+            <!-- Trainer Portal link - shown only when trainer is signed in -->
+            <li class="nav-item" id="trainerPortalNavItem" style="display: none;">
+              <a class="nav-link" href="./trainer.html">Trainer Portal</a>
+            </li>
           </ul>
 
           <!-- Right side: Account actions -->
@@ -71,129 +75,74 @@
       </div>
     </nav>
 
+    <!-- Hero Section -->
+    <section class="hero">
+      <div class="container">
+        <div class="row">
+          <div class="col-12 text-center">
+            <h1 class="hero-headline">Trainer Portal</h1>
+            <p class="hero-subtext">
+              Manage your profile, availability, and view your booked sessions with clients. Track booking status and payments all in one place.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Main Content -->
     <main class="container py-5">
-      <div class="row justify-content-center">
-        <div class="col-lg-6 col-md-8">
-          <div class="card shadow-lg">
-            <div class="card-body p-4">
-              <h2 class="card-title text-center mb-4">Create Trainer Account</h2>
-              <p class="text-center text-secondary mb-4">
-                Join VitalCore Fitness Marketplace as an independent trainer. Set your own rates, manage your availability, and use our fully equipped facilities to train clients.
-              </p>
+      <!-- Tab Navigation -->
+      <ul class="nav nav-tabs mb-4" id="trainerTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active" id="schedule-tab" data-bs-toggle="tab" data-bs-target="#scheduleTab" type="button" role="tab" aria-controls="scheduleTab" aria-selected="true" onclick="loadAvailabilityData()">
+            Weekly Schedule
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="sessions-tab" data-bs-toggle="tab" data-bs-target="#sessionsTab" type="button" role="tab" aria-controls="sessionsTab" aria-selected="false" onclick="loadSessionsData()">
+            Booked Sessions
+          </button>
+        </li>
+      </ul>
 
-              <form id="signupForm" novalidate>
-                <!-- First Name -->
-                <div class="mb-3">
-                  <label for="firstName" class="form-label">First Name <span class="text-danger">*</span></label>
-                  <input
-                    type="text"
-                    class="form-control"
-                    id="firstName"
-                    name="firstName"
-                    placeholder="Enter your first name"
-                    required
-                  />
-                  <div class="invalid-feedback">Please provide your first name.</div>
+      <!-- Tab Content -->
+      <div class="tab-content" id="trainerTabContent">
+        <!-- Weekly Schedule Tab -->
+        <div class="tab-pane fade show active" id="scheduleTab" role="tabpanel" aria-labelledby="schedule-tab">
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                  <h5 class="card-title mb-0">Weekly Availability Schedule</h5>
+                  <p class="card-text text-muted mb-0 small">Click on empty time slots to add availability, or click existing slots to edit/delete.</p>
                 </div>
+                <button type="button" class="btn btn-primary" onclick="openAddAvailabilityModal()">
+                  Add Availability
+                </button>
+              </div>
+              <!-- Availability calendar will be displayed here -->
+              <div id="availabilityData" class="mt-3">
+                <p class="text-white">Loading availability data...</p>
+              </div>
+            </div>
+          </div>
+        </div>
 
-                <!-- Last Name -->
-                <div class="mb-3">
-                  <label for="lastName" class="form-label">Last Name <span class="text-danger">*</span></label>
-                  <input
-                    type="text"
-                    class="form-control"
-                    id="lastName"
-                    name="lastName"
-                    placeholder="Enter your last name"
-                    required
-                  />
-                  <div class="invalid-feedback">Please provide your last name.</div>
-                </div>
-
-                <!-- Email -->
-                <div class="mb-3">
-                  <label for="email" class="form-label">Email <span class="text-danger">*</span></label>
-                  <input
-                    type="email"
-                    class="form-control"
-                    id="email"
-                    name="email"
-                    placeholder="example@email.com"
-                    required
-                  />
-                  <div class="invalid-feedback">Please provide a valid email address.</div>
-                </div>
-
-                <!-- Phone Number -->
-                <div class="mb-3">
-                  <label for="phone" class="form-label">Phone Number <span class="text-danger">*</span></label>
-                  <input
-                    type="tel"
-                    class="form-control"
-                    id="phone"
-                    name="phone"
-                    placeholder="123-456-7890"
-                    pattern="[0-9]{3}-[0-9]{3}-[0-9]{4}|[0-9]{10}"
-                    required
-                  />
-                  <div class="invalid-feedback">Please provide a valid phone number (###-###-#### or 10 digits).</div>
-                  <small class="form-text text-muted">Format: ###-###-#### or 10 digits</small>
-                </div>
-
-                <!-- Birthday -->
-                <div class="mb-3">
-                  <label for="birthday" class="form-label">Birthday <span class="text-danger">*</span></label>
-                  <input
-                    type="date"
-                    class="form-control"
-                    id="birthday"
-                    name="birthday"
-                    required
-                  />
-                  <div class="invalid-feedback">Please provide your birthday.</div>
-                  <small class="form-text text-muted">Must be 18 years or older</small>
-                </div>
-
-                <!-- Password -->
-                <div class="mb-3">
-                  <label for="password" class="form-label">Password <span class="text-danger">*</span></label>
-                  <input
-                    type="password"
-                    class="form-control"
-                    id="password"
-                    name="password"
-                    placeholder="Create a secure password"
-                    required
-                    minlength="6"
-                  />
-                  <div class="invalid-feedback">Password must be at least 6 characters long.</div>
-                </div>
-
-                <!-- Confirm Password -->
-                <div class="mb-4">
-                  <label for="confirmPassword" class="form-label">Confirm Password <span class="text-danger">*</span></label>
-                  <input
-                    type="password"
-                    class="form-control"
-                    id="confirmPassword"
-                    name="confirmPassword"
-                    placeholder="Re-enter your password"
-                    required
-                  />
-                  <div class="invalid-feedback">Passwords do not match.</div>
-                </div>
-
-                <!-- Submit Button -->
-                <div class="d-grid">
-                  <button type="submit" class="btn btn-primary btn-lg">Create Trainer Account</button>
-                </div>
-              </form>
-
+        <!-- Booked Sessions Tab -->
+        <div class="tab-pane fade" id="sessionsTab" role="tabpanel" aria-labelledby="sessions-tab">
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <h5 class="card-title mb-4">Booked Sessions</h5>
+              <p class="card-text text-muted mb-3">View your booked sessions with clients, including payment status and booking details.</p>
+              <!-- Sessions data will be displayed here -->
+              <div id="sessionsData" class="mt-3">
+                <p class="text-white">Loading sessions data...</p>
+              </div>
             </div>
           </div>
         </div>
       </div>
+
     </main>
 
     <!-- Bootstrap JS bundle -->
@@ -246,7 +195,6 @@
                 <label for="profilePhone" class="form-label">Phone Number</label>
                 <input type="tel" class="form-control" id="profilePhone" pattern="[0-9]{3}-[0-9]{3}-[0-9]{4}|[0-9]{10}" readonly />
                 <div class="invalid-feedback">Please provide a valid phone number.</div>
-                <small class="form-text text-muted">Format: ###-###-#### or 10 digits</small>
               </div>
 
               <!-- Certification (Trainer only) -->
@@ -283,8 +231,61 @@
       </div>
     </div>
 
+    <!-- Add/Edit Availability Modal -->
+    <div class="modal fade" id="availabilityModal" tabindex="-1" aria-labelledby="availabilityModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="availabilityModalLabel">Add Availability</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <form id="availabilityForm" novalidate onsubmit="handleAvailabilitySubmit(event)">
+            <div class="modal-body">
+              <!-- Day of Week -->
+              <div class="mb-3">
+                <label for="availabilityDayOfWeek" class="form-label">Day of Week <span class="text-danger">*</span></label>
+                <select class="form-select" id="availabilityDayOfWeek" required>
+                  <option value="">Select a day</option>
+                  <option value="Monday">Monday</option>
+                  <option value="Tuesday">Tuesday</option>
+                  <option value="Wednesday">Wednesday</option>
+                  <option value="Thursday">Thursday</option>
+                  <option value="Friday">Friday</option>
+                  <option value="Saturday">Saturday</option>
+                  <option value="Sunday">Sunday</option>
+                </select>
+                <div class="invalid-feedback">Please select a day of the week.</div>
+              </div>
+
+              <!-- Start Time -->
+              <div class="mb-3">
+                <label for="availabilityStartTime" class="form-label">Start Time <span class="text-danger">*</span></label>
+                <select class="form-select" id="availabilityStartTime" required>
+                  <option value="">Select a time</option>
+                </select>
+                <div class="invalid-feedback">Please select a start time.</div>
+              </div>
+
+              <!-- Specialty -->
+              <div class="mb-3">
+                <label for="availabilitySpecialty" class="form-label">Specialty <span class="text-danger">*</span></label>
+                <select class="form-select" id="availabilitySpecialty" required>
+                  <option value="">Select a specialty</option>
+                </select>
+                <div class="invalid-feedback">Please select a specialty.</div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+              <button type="submit" class="btn btn-primary" id="availabilitySubmitBtn">Add Availability</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
     <!-- Custom JS -->
-    <script src="./scripts/signup-trainer.js"></script>
+    <script src="./scripts/trainer.js"></script>
     <script src="./scripts/profile.js"></script>
   </body>
 </html>

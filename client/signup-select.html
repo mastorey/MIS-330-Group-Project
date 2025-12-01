@@ -52,11 +52,19 @@
 
           <!-- Right side: Account actions -->
           <ul class="navbar-nav">
-            <li class="nav-item">
+            <li class="nav-item" id="createAccountNav">
               <a class="nav-link text-primary fw-semibold" href="./signup-select.html">Create Account</a>
             </li>
-            <li class="nav-item">
+            <li class="nav-item" id="loginNav">
               <a class="nav-link text-primary fw-semibold" href="./login.html">Login</a>
+            </li>
+            <li class="nav-item" id="profileImageNav" style="display: none;">
+              <div class="profile-image" id="profileImage" data-bs-toggle="modal" data-bs-target="#profileModal">
+                <span id="profileInitials">U</span>
+              </div>
+            </li>
+            <li class="nav-item" id="logoutNav" style="display: none;">
+              <a class="nav-link text-primary fw-semibold" href="#" onclick="handleLogout(); return false;">Logout</a>
             </li>
           </ul>
         </div>
@@ -136,8 +144,89 @@
       crossorigin="anonymous"
     ></script>
 
+    <!-- Profile Modal -->
+    <div class="modal fade" id="profileModal" tabindex="-1" aria-labelledby="profileModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="profileModalLabel">View Profile</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <form id="profileForm" novalidate onsubmit="handleProfileSubmit(event)">
+            <div class="modal-body">
+              <!-- First Name -->
+              <div class="mb-3">
+                <label for="profileFirstName" class="form-label">First Name <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" id="profileFirstName" required readonly />
+                <div class="invalid-feedback">Please provide your first name.</div>
+              </div>
+
+              <!-- Last Name -->
+              <div class="mb-3">
+                <label for="profileLastName" class="form-label">Last Name <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" id="profileLastName" required readonly />
+                <div class="invalid-feedback">Please provide your last name.</div>
+              </div>
+
+              <!-- Email (read-only) -->
+              <div class="mb-3">
+                <label for="profileEmail" class="form-label">Email</label>
+                <input type="email" class="form-control" id="profileEmail" readonly />
+                <small class="form-text text-muted">Email cannot be changed</small>
+              </div>
+
+              <!-- Birthday -->
+              <div class="mb-3">
+                <label for="profileBirthday" class="form-label">Birthday <span class="text-danger">*</span></label>
+                <input type="date" class="form-control" id="profileBirthday" required readonly />
+                <div class="invalid-feedback">Please provide your birthday.</div>
+              </div>
+
+              <!-- Phone (Client and Trainer only) -->
+              <div class="mb-3" id="profilePhoneGroup" style="display: none;">
+                <label for="profilePhone" class="form-label">Phone Number</label>
+                <input type="tel" class="form-control" id="profilePhone" pattern="[0-9]{3}-[0-9]{3}-[0-9]{4}|[0-9]{10}" readonly />
+                <div class="invalid-feedback">Please provide a valid phone number.</div>
+                <small class="form-text text-muted">Format: ###-###-#### or 10 digits</small>
+              </div>
+
+              <!-- Certification (Trainer only) -->
+              <div class="mb-3" id="profileCertificationGroup" style="display: none;">
+                <label for="profileCertification" class="form-label">Certification</label>
+                <input type="text" class="form-control" id="profileCertification" placeholder="e.g., NASM-CPT, ACE-CPT" readonly />
+              </div>
+
+              <!-- Password -->
+              <div class="mb-3" id="profilePasswordGroup">
+                <label for="profilePassword" class="form-label">New Password</label>
+                <input type="password" class="form-control" id="profilePassword" minlength="6" placeholder="Leave blank to keep current password" readonly />
+                <div class="invalid-feedback">Password must be at least 6 characters long.</div>
+                <small class="form-text text-muted">Leave blank if you don't want to change your password</small>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <!-- Read-only mode buttons -->
+              <div id="readOnlyButtons" class="w-100 d-flex justify-content-between">
+                <button type="button" class="btn btn-outline-primary" onclick="switchToEditMode()">Edit</button>
+                <div>
+                  <button type="button" class="btn btn-danger me-2" onclick="handleDeleteAccount()">Delete Account</button>
+                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                </div>
+              </div>
+              <!-- Edit mode buttons -->
+              <div id="editButtons" class="w-100 d-none">
+                <button type="button" class="btn btn-secondary me-2" onclick="switchToReadOnlyMode()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
     <!-- Custom JS -->
     <script src="./scripts/main.js"></script>
+    <script src="./scripts/profile.js"></script>
   </body>
 </html>
 
