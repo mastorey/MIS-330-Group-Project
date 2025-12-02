@@ -280,6 +280,44 @@ namespace MyApp.Namespace
             {
                 using var connection = _dbUtility.GetConnection();
                 
+                // Get ClientID from email to check for free session reward
+                int clientId = GetClientIdFromEmail(connection, email);
+                bool hasFreeSession = false;
+                
+                if (clientId > 0)
+                {
+                    // Check if client has a free session reward available (count both Pending and Completed)
+                    int completedSessions = 0;
+                    string completedQuery = @"
+                        SELECT COUNT(*) 
+                        FROM SessionBooking 
+                        WHERE ClientID = @clientId 
+                        AND (Status = 'Completed' OR Status = 'Pending')
+                        AND IsDeleted = 0";
+                    using (var completedCommand = new MySqlCommand(completedQuery, connection))
+                    {
+                        completedCommand.Parameters.AddWithValue("@clientId", clientId);
+                        completedSessions = Convert.ToInt32(completedCommand.ExecuteScalar());
+                    }
+
+                    int freeSessionsUsed = 0;
+                    string freeQuery = @"
+                        SELECT COUNT(*) 
+                        FROM SessionBooking 
+                        WHERE ClientID = @clientId 
+                        AND Price = 0.00 
+                        AND IsDeleted = 0";
+                    using (var freeCommand = new MySqlCommand(freeQuery, connection))
+                    {
+                        freeCommand.Parameters.AddWithValue("@clientId", clientId);
+                        freeSessionsUsed = Convert.ToInt32(freeCommand.ExecuteScalar());
+                    }
+
+                    int cyclesCompleted = completedSessions / 10;
+                    int rewardsAvailable = cyclesCompleted - freeSessionsUsed;
+                    hasFreeSession = rewardsAvailable > 0;
+                }
+                
                 // Calculate date range for next week (7-14 days from today)
                 DateTime today = DateTime.Today;
                 DateTime minDate = today.AddDays(7);
@@ -345,6 +383,11 @@ namespace MyApp.Namespace
                     if (calculatedDate != DateTime.MinValue)
                     {
                         var rate = reader.IsDBNull(reader.GetOrdinal("Rate")) ? 90.00m : reader.GetDecimal(reader.GetOrdinal("Rate"));
+                        // If client has a free session reward, set rate to $0
+                        if (hasFreeSession)
+                        {
+                            rate = 0.00m;
+                        }
                         availabilityList.Add(new
                         {
                             availabilityId = availabilityId,
@@ -483,6 +526,47 @@ namespace MyApp.Namespace
                     }
                 }
 
+                // Check if client has a free session reward available
+                bool useFreeSession = false;
+                if (request.UseFreeSession == true)
+                {
+                    // Verify client has a free session available (count both Pending and Completed)
+                    int completedSessions = 0;
+                    string completedQuery = @"
+                        SELECT COUNT(*) 
+                        FROM SessionBooking 
+                        WHERE ClientID = @clientId 
+                        AND (Status = 'Completed' OR Status = 'Pending')
+                        AND IsDeleted = 0";
+                    using (var completedCommand = new MySqlCommand(completedQuery, connection))
+                    {
+                        completedCommand.Parameters.AddWithValue("@clientId", clientId);
+                        completedSessions = Convert.ToInt32(completedCommand.ExecuteScalar());
+                    }
+
+                    int freeSessionsUsed = 0;
+                    string freeQuery = @"
+                        SELECT COUNT(*) 
+                        FROM SessionBooking 
+                        WHERE ClientID = @clientId 
+                        AND Price = 0.00 
+                        AND IsDeleted = 0";
+                    using (var freeCommand = new MySqlCommand(freeQuery, connection))
+                    {
+                        freeCommand.Parameters.AddWithValue("@clientId", clientId);
+                        freeSessionsUsed = Convert.ToInt32(freeCommand.ExecuteScalar());
+                    }
+
+                    int cyclesCompleted = completedSessions / 10;
+                    int rewardsAvailable = cyclesCompleted - freeSessionsUsed;
+
+                    if (rewardsAvailable > 0)
+                    {
+                        useFreeSession = true;
+                        price = 0.00m; // Set price to $0 for free session
+                    }
+                }
+
                 // Parse calculated date
                 if (!DateTime.TryParse(request.CalculatedDate, out DateTime sessionDate))
                 {
@@ -507,10 +591,10 @@ namespace MyApp.Namespace
                     });
                 }
 
-                // Create session booking
+                // Create session booking - For demo purposes, mark as Completed immediately
                 string insertSessionQuery = @"
                     INSERT INTO SessionBooking (TrainerID, ClientID, SpecialtyID, SessionDate, StartTime, Status, Price)
-                    VALUES (@trainerId, @clientId, @specialtyId, @sessionDate, @startTime, 'Pending', @price)";
+                    VALUES (@trainerId, @clientId, @specialtyId, @sessionDate, @startTime, 'Completed', @price)";
 
                 using var sessionCommand = new MySqlCommand(insertSessionQuery, connection);
                 sessionCommand.Parameters.AddWithValue("@trainerId", trainerId);
@@ -533,10 +617,11 @@ namespace MyApp.Namespace
                 updateCommand.Parameters.AddWithValue("@availabilityId", request.AvailabilityId);
                 updateCommand.ExecuteNonQuery();
 
-                // Create payment record with Pending status
+                // Create payment record - For demo purposes, mark as Completed immediately if price > 0
+                // If free session (price = 0), still create payment record but mark as Completed
                 string insertPaymentQuery = @"
                     INSERT INTO Payments (ClientID, SessionID, Amount, Status)
-                    VALUES (@clientId, @sessionId, @price, 'Pending')";
+                    VALUES (@clientId, @sessionId, @price, 'Completed')";
 
                 using var paymentCommand = new MySqlCommand(insertPaymentQuery, connection);
                 paymentCommand.Parameters.AddWithValue("@clientId", clientId);
@@ -544,11 +629,55 @@ namespace MyApp.Namespace
                 paymentCommand.Parameters.AddWithValue("@price", price);
                 paymentCommand.ExecuteNonQuery();
 
+                // Verify the session was created and get count (both Pending and Completed count)
+                string verifyQuery = @"
+                    SELECT Status, SessionID,
+                           (SELECT COUNT(*) FROM SessionBooking WHERE ClientID = @clientId AND (Status = 'Completed' OR Status = 'Pending') AND IsDeleted = 0) AS TotalSessions
+                    FROM SessionBooking 
+                    WHERE SessionID = @sessionId 
+                    AND ClientID = @clientId 
+                    AND IsDeleted = 0";
+                
+                using var verifyCommand = new MySqlCommand(verifyQuery, connection);
+                verifyCommand.Parameters.AddWithValue("@sessionId", sessionId);
+                verifyCommand.Parameters.AddWithValue("@clientId", clientId);
+                
+                using var verifyReader = verifyCommand.ExecuteReader();
+                string actualStatus = "Unknown";
+                int totalSessions = 0;
+                if (verifyReader.Read())
+                {
+                    actualStatus = verifyReader.GetString("Status");
+                    totalSessions = verifyReader.GetInt32("TotalSessions");
+                }
+                verifyReader.Close();
+
+                Console.WriteLine($"[Booking] Session {sessionId} created with Status: {actualStatus}, Total Sessions (Pending + Completed): {totalSessions}");
+                
+                // Double-check by querying all sessions (Pending + Completed) for this client
+                string doubleCheckQuery = @"
+                    SELECT COUNT(*) 
+                    FROM SessionBooking 
+                    WHERE ClientID = @clientId 
+                    AND (Status = 'Completed' OR Status = 'Pending')
+                    AND IsDeleted = 0";
+                
+                using var doubleCheckCommand = new MySqlCommand(doubleCheckQuery, connection);
+                doubleCheckCommand.Parameters.AddWithValue("@clientId", clientId);
+                var doubleCheckResult = doubleCheckCommand.ExecuteScalar();
+                int doubleCheckCount = doubleCheckResult != null && doubleCheckResult != DBNull.Value 
+                    ? Convert.ToInt32(doubleCheckResult) 
+                    : 0;
+                
+                Console.WriteLine($"[Booking] Double-check: Total sessions (Pending + Completed) in DB: {doubleCheckCount}");
+
                 return Ok(new
                 {
                     success = true,
                     message = "Session booked successfully",
-                    sessionId = sessionId
+                    sessionId = sessionId,
+                    status = actualStatus,
+                    totalCompleted = totalSessions
                 });
             }
             catch (MySqlException ex)
@@ -775,6 +904,164 @@ namespace MyApp.Namespace
             return DateTime.MinValue;
         }
 
+        [HttpGet("tracker")]
+        public IActionResult GetTrackerData([FromQuery] string email)
+        {
+            if (string.IsNullOrEmpty(email))
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Email is required"
+                });
+            }
+
+            try
+            {
+                using var connection = _dbUtility.GetConnection();
+                
+                // Get ClientID from email
+                int clientId = GetClientIdFromEmail(connection, email);
+                if (clientId == 0)
+                {
+                    return NotFound(new
+                    {
+                        success = false,
+                        message = "Client not found"
+                    });
+                }
+
+                // Get all-time sessions count (both Pending and Completed count towards tracker)
+                // Use a fresh query to ensure we get the latest data
+                string completedSessionsQuery = @"
+                    SELECT COUNT(*) 
+                    FROM SessionBooking 
+                    WHERE ClientID = @clientId 
+                    AND (Status = 'Completed' OR Status = 'Pending')
+                    AND IsDeleted = 0";
+
+                using var completedCommand = new MySqlCommand(completedSessionsQuery, connection);
+                completedCommand.Parameters.AddWithValue("@clientId", clientId);
+                var completedResult = completedCommand.ExecuteScalar();
+                int allTimeCompleted = completedResult != null && completedResult != DBNull.Value 
+                    ? Convert.ToInt32(completedResult) 
+                    : 0;
+
+                Console.WriteLine($"[Tracker] Client {clientId} - All-time sessions (Pending + Completed): {allTimeCompleted}");
+
+                // Calculate 1-10 counter (current cycle)
+                int currentCycleCount = allTimeCompleted % 10;
+                int cyclesCompleted = allTimeCompleted / 10;
+                
+                Console.WriteLine($"[Tracker] Current cycle count: {currentCycleCount}, Cycles completed: {cyclesCompleted}");
+
+                // Calculate rewards earned and used
+                // Rewards earned = cyclesCompleted
+                // Rewards used = count of sessions with Price = 0 that were booked after earning a reward
+                string freeSessionsQuery = @"
+                    SELECT COUNT(*) 
+                    FROM SessionBooking 
+                    WHERE ClientID = @clientId 
+                    AND Price = 0.00 
+                    AND IsDeleted = 0";
+
+                using var freeCommand = new MySqlCommand(freeSessionsQuery, connection);
+                freeCommand.Parameters.AddWithValue("@clientId", clientId);
+                int freeSessionsUsed = Convert.ToInt32(freeCommand.ExecuteScalar());
+
+                // Calculate available rewards
+                int rewardsAvailable = cyclesCompleted - freeSessionsUsed;
+                bool hasFreeSession = rewardsAvailable > 0;
+
+                // Get total calories burned from sessions (both Pending and Completed count)
+                string caloriesQuery = @"
+                    SELECT 
+                        s.SpecialtyName,
+                        COUNT(*) AS SessionCount
+                    FROM SessionBooking sb
+                    INNER JOIN Specialties s ON sb.SpecialtyID = s.SpecialtyID
+                    WHERE sb.ClientID = @clientId 
+                    AND (sb.Status = 'Completed' OR sb.Status = 'Pending')
+                    AND sb.IsDeleted = 0
+                    AND s.IsDeleted = 0
+                    GROUP BY s.SpecialtyID, s.SpecialtyName";
+
+                using var caloriesCommand = new MySqlCommand(caloriesQuery, connection);
+                caloriesCommand.Parameters.AddWithValue("@clientId", clientId);
+                
+                using var caloriesReader = caloriesCommand.ExecuteReader();
+                int totalCalories = 0;
+                
+                while (caloriesReader.Read())
+                {
+                    string specialtyName = caloriesReader.GetString("SpecialtyName");
+                    int sessionCount = caloriesReader.GetInt32("SessionCount");
+                    int caloriesPerSession = GetCaloriesPerSession(specialtyName);
+                    totalCalories += caloriesPerSession * sessionCount;
+                }
+                caloriesReader.Close();
+
+                return Ok(new
+                {
+                    success = true,
+                    data = new
+                    {
+                        allTimeCompleted = allTimeCompleted,
+                        currentCycleCount = currentCycleCount,
+                        cyclesCompleted = cyclesCompleted,
+                        rewardsAvailable = rewardsAvailable,
+                        hasFreeSession = hasFreeSession,
+                        totalCalories = totalCalories
+                    }
+                });
+            }
+            catch (MySqlException ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "Database error occurred",
+                    error = ex.Message
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "An error occurred while fetching tracker data",
+                    error = ex.Message
+                });
+            }
+        }
+
+        // Helper method to get calories per session based on specialty
+        private int GetCaloriesPerSession(string specialtyName)
+        {
+            // Calorie mapping for different specialties (calories burned per 1-hour session)
+            var calorieMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "Cardio", 600 },
+                { "Strength Training", 400 },
+                { "Yoga", 250 },
+                { "Pilates", 300 },
+                { "HIIT", 700 },
+                { "CrossFit", 650 },
+                { "Swimming", 550 },
+                { "Cycling", 500 },
+                { "Running", 600 },
+                { "Boxing", 650 },
+                { "Dance", 450 },
+                { "Stretching", 150 },
+                { "Weightlifting", 350 },
+                { "Functional Training", 500 },
+                { "Personal Training", 450 }
+            };
+
+            // Return calories for specialty, or default to 400 if not found
+            return calorieMap.TryGetValue(specialtyName, out int calories) ? calories : 400;
+        }
+
         // Helper method
         private int GetClientIdFromEmail(MySqlConnection connection, string email)
         {
@@ -810,6 +1097,7 @@ namespace MyApp.Namespace
     {
         public int AvailabilityId { get; set; }
         public string CalculatedDate { get; set; } = string.Empty;
+        public bool? UseFreeSession { get; set; }
     }
 }
 

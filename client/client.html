@@ -99,6 +99,59 @@
 
     <!-- Main Content -->
     <main class="container py-5">
+      <!-- Tracker Section -->
+      <div class="row mb-4">
+        <!-- Session Tracker -->
+        <div class="col-md-6 mb-4">
+          <div class="card shadow-sm">
+            <div class="card-body text-center">
+              <h5 class="card-title mb-4">Session Tracker</h5>
+              <div class="d-flex justify-content-center align-items-center mb-3">
+                <div class="position-relative" style="width: 200px; height: 200px;">
+                  <!-- Circular Progress Meter -->
+                  <svg class="circular-progress" width="200" height="200">
+                    <!-- Background circle -->
+                    <circle cx="100" cy="100" r="85" fill="none" stroke="#2c3e50" stroke-width="15" />
+                    <!-- Progress circle -->
+                    <circle id="progressCircle" cx="100" cy="100" r="85" fill="none" stroke="#0d6efd" stroke-width="15" 
+                            stroke-linecap="round" transform="rotate(-90 100 100)" 
+                            stroke-dasharray="534.07" stroke-dashoffset="534.07" />
+                  </svg>
+                  <!-- Center text -->
+                  <div class="position-absolute top-50 start-50 translate-middle text-center">
+                    <div id="currentCycleCount" class="h2 mb-0 fw-bold text-white">0</div>
+                    <div class="small text-white">of 10</div>
+                  </div>
+                </div>
+              </div>
+              <div class="mb-2 text-white">
+                <strong>All-Time Completed:</strong> <span id="allTimeCompleted" class="text-white fw-bold">0</span> sessions
+              </div>
+              <div class="mb-2 text-white">
+                <strong>Rewards Available:</strong> <span id="rewardsAvailable" class="text-white fw-bold">0</span>
+              </div>
+              <div id="freeSessionBadge" class="alert alert-success mb-0 mt-3" style="display: none;">
+                <strong>🎉 Free Session Available!</strong> Your next booking will be free.
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Calories Tracker -->
+        <div class="col-md-6 mb-4">
+          <div class="card shadow-sm">
+            <div class="card-body text-center">
+              <h5 class="card-title mb-4">Calories Burned</h5>
+              <div class="display-1 mb-3">
+                <span id="totalCalories" class="text-white fw-bold">0</span>
+                <small class="text-white fs-4">kcal</small>
+              </div>
+              <p class="text-white mb-0">Total calories burned from all completed sessions</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Tab Navigation -->
       <ul class="nav nav-tabs mb-4" id="clientTabs" role="tablist">
         <li class="nav-item" role="presentation">

@@ -19,6 +19,9 @@ function initializeClientPage() {
   // Check if client is signed in
   checkClientAuth();
   
+  // Load tracker data
+  loadTrackerData();
+  
   // Load client data for active tab
   loadClientData();
 }
@@ -53,6 +56,212 @@ async function loadClientData() {
     }
   } catch (error) {
     console.error('Error loading client data:', error);
+  }
+}
+
+/**
+ * Load tracker data (session tracker and calories)
+ */
+async function loadTrackerData() {
+  const userEmail = localStorage.getItem('userEmail');
+  if (!userEmail) {
+    console.warn('No user email found, cannot load tracker data');
+    return;
+  }
+
+  console.log('[Tracker] Starting to load tracker data for:', userEmail);
+
+  try {
+    // Add cache-busting parameter to ensure fresh data
+    const timestamp = new Date().getTime();
+    const url = `${API_BASE_URL}/client/tracker?email=${encodeURIComponent(userEmail)}&_t=${timestamp}`;
+    console.log('[Tracker] Fetching from URL:', url);
+    
+    const response = await fetch(url);
+    
+    console.log('[Tracker] Response status:', response.status, response.statusText);
+    
+    if (!response.ok) {
+      // Try to get error message from response
+      let errorMessage = `Failed to fetch tracker data: ${response.status} ${response.statusText}`;
+      try {
+        const responseText = await response.text();
+        console.error('[Tracker] Error response text:', responseText);
+        // Try to parse as JSON
+        try {
+          const errorData = JSON.parse(responseText);
+          console.error('[Tracker] Error response data:', errorData);
+          if (errorData.message) {
+            errorMessage = errorData.message;
+          }
+        } catch {
+          // Not JSON, use the text as is
+          if (responseText) {
+            errorMessage = responseText;
+          }
+        }
+      } catch {
+        // If we can't read the response, use status text
+      }
+      throw new Error(errorMessage);
+    }
+    
+    const data = await response.json();
+    console.log('[Tracker] Response data:', data);
+    
+    if (!data || !data.success) {
+      throw new Error(data?.message || 'Failed to load tracker data');
+    }
+    
+    if (!data.data) {
+      throw new Error('Tracker data is missing from response');
+    }
+    
+    const trackerData = data.data;
+    
+    console.log('[Tracker] Tracker data loaded successfully:', trackerData);
+    console.log('[Tracker] Values:', {
+      allTimeCompleted: trackerData.allTimeCompleted,
+      currentCycleCount: trackerData.currentCycleCount,
+      totalCalories: trackerData.totalCalories,
+      rewardsAvailable: trackerData.rewardsAvailable
+    });
+    
+    // Remove any existing error messages on successful load
+    const existingError = document.querySelector('.tracker-error-message');
+    if (existingError) {
+      existingError.remove();
+    }
+    
+    // Update session tracker
+    console.log('[Tracker] Calling updateSessionTracker...');
+    updateSessionTracker(trackerData);
+    
+    // Update calories tracker
+    console.log('[Tracker] Calling updateCaloriesTracker...');
+    updateCaloriesTracker(trackerData.totalCalories);
+    
+    // Store tracker data globally for use in booking
+    window.trackerData = trackerData;
+    console.log('[Tracker] Tracker data stored in window.trackerData');
+    
+  } catch (error) {
+    console.error('[Tracker] Error loading tracker data:', error);
+    console.error('[Tracker] Error stack:', error.stack);
+    
+    // Remove any existing error messages first
+    const existingError = document.querySelector('.tracker-error-message');
+    if (existingError) {
+      existingError.remove();
+    }
+    
+    // Only show error if it's not a network/CORS issue (which might be expected if API is down)
+    if (error.message && !error.message.includes('Failed to fetch') && !error.message.includes('NetworkError')) {
+      // Show error to user only for actual API errors
+      const trackerContainer = document.querySelector('.row.mb-4');
+      if (trackerContainer) {
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'alert alert-danger tracker-error-message';
+        errorDiv.textContent = 'Failed to load tracker data. Please refresh the page.';
+        trackerContainer.insertBefore(errorDiv, trackerContainer.firstChild);
+      }
+    } else {
+      // For network errors, just log to console (API might not be running)
+      console.warn('[Tracker] Tracker data unavailable - API may not be running or network issue');
+    }
+  }
+}
+
+/**
+ * Update session tracker display
+ */
+function updateSessionTracker(trackerData) {
+  if (!trackerData) {
+    console.error('No tracker data provided to updateSessionTracker');
+    return;
+  }
+  
+  const { allTimeCompleted, currentCycleCount, rewardsAvailable, hasFreeSession } = trackerData;
+  
+  console.log('Updating session tracker:', { allTimeCompleted, currentCycleCount, rewardsAvailable, hasFreeSession });
+  
+  // Update all-time completed
+  const allTimeElement = document.getElementById('allTimeCompleted');
+  if (allTimeElement) {
+    allTimeElement.textContent = allTimeCompleted;
+    console.log('Updated allTimeCompleted to:', allTimeCompleted);
+  } else {
+    console.error('allTimeCompleted element not found');
+  }
+  
+  // Update current cycle count
+  const currentCycleElement = document.getElementById('currentCycleCount');
+  if (currentCycleElement) {
+    currentCycleElement.textContent = currentCycleCount;
+    console.log('Updated currentCycleCount to:', currentCycleCount);
+  } else {
+    console.error('currentCycleCount element not found');
+  }
+  
+  // Update rewards available
+  const rewardsElement = document.getElementById('rewardsAvailable');
+  if (rewardsElement) {
+    rewardsElement.textContent = rewardsAvailable;
+    console.log('Updated rewardsAvailable to:', rewardsAvailable);
+  } else {
+    console.error('rewardsAvailable element not found');
+  }
+  
+  // Update circular progress meter
+  updateCircularProgress(currentCycleCount);
+  
+  // Show/hide free session badge
+  const freeSessionBadge = document.getElementById('freeSessionBadge');
+  if (freeSessionBadge) {
+    if (hasFreeSession) {
+      freeSessionBadge.style.display = 'block';
+    } else {
+      freeSessionBadge.style.display = 'none';
+    }
+  }
+}
+
+/**
+ * Update circular progress meter
+ */
+function updateCircularProgress(currentCount) {
+  const progressCircle = document.getElementById('progressCircle');
+  if (!progressCircle) return;
+  
+  // Calculate progress (0-10)
+  const maxValue = 10;
+  const progress = Math.min(currentCount / maxValue, 1);
+  
+  // Calculate stroke-dashoffset
+  // Circumference = 2 * π * r = 2 * π * 85 ≈ 534.07
+  const circumference = 2 * Math.PI * 85;
+  const offset = circumference - (progress * circumference);
+  
+  progressCircle.style.strokeDashoffset = offset;
+  
+  // Change color when at 10
+  if (currentCount === 10) {
+    progressCircle.style.stroke = '#4caf50'; // Green when complete
+  } else {
+    progressCircle.style.stroke = '#0d6efd'; // Blue for progress
+  }
+}
+
+/**
+ * Update calories tracker display
+ */
+function updateCaloriesTracker(totalCalories) {
+  const caloriesElement = document.getElementById('totalCalories');
+  if (caloriesElement) {
+    caloriesElement.textContent = totalCalories.toLocaleString();
+    console.log('Updated totalCalories to:', totalCalories);
+  } else {
+    console.error('totalCalories element not found');
   }
 }
 
@@ -302,7 +511,7 @@ function renderSessionsCards(sessions) {
     const formattedDate = formatDate(session.calculatedDate);
     const formattedTime = formatTime(session.startTime);
     const sessionRate = session.rate !== undefined && session.rate !== null ? parseFloat(session.rate) : 90.00;
-    const formattedRate = formatCurrency(sessionRate);
+    const formattedRate = sessionRate === 0 ? '<span class="text-success fw-bold">FREE 🎉</span>' : formatCurrency(sessionRate);
     
     return `
       <div class="col-md-6 col-lg-4">
@@ -316,7 +525,7 @@ function renderSessionsCards(sessions) {
               <strong>Date:</strong> ${formattedDate}<br>
               <strong class="text-primary">Price:</strong> ${formattedRate}
             </p>
-            <button class="btn btn-primary w-100" onclick="bookSession(${session.availabilityId}, '${session.calculatedDate}', '${session.trainerName}', '${session.specialtyName}', '${session.dayOfWeek}', '${formattedTime}', '${formattedDate}')">
+            <button class="btn btn-primary w-100" onclick="bookSession(${session.availabilityId}, '${session.calculatedDate}', '${session.trainerName}', '${session.specialtyName}', '${session.dayOfWeek}', '${formattedTime}', '${formattedDate}', ${sessionRate})">
               Book Session
             </button>
           </div>
@@ -492,8 +701,9 @@ async function processPayment(event) {
       const paymentModal = bootstrap.Modal.getInstance(document.getElementById('paymentModal'));
       paymentModal.hide();
       
-      // Reload sessions
+      // Reload sessions and tracker data
       await loadMySessions();
+      await loadTrackerData();
       
       alert('Payment processed successfully!');
     } else {
@@ -514,12 +724,23 @@ async function processPayment(event) {
 /**
  * Book a session
  */
-function bookSession(availabilityId, calculatedDate, trainerName, specialtyName, dayOfWeek, formattedTime, formattedDate) {
+function bookSession(availabilityId, calculatedDate, trainerName, specialtyName, dayOfWeek, formattedTime, formattedDate, sessionRate) {
   const bookingModal = new bootstrap.Modal(document.getElementById('bookingModal'));
   const bookingConfirmText = document.getElementById('bookingConfirmText');
   const confirmBookingBtn = document.getElementById('confirmBookingBtn');
   
-  bookingConfirmText.textContent = `Are you sure you want to book a session with ${trainerName} for ${specialtyName} on ${dayOfWeek}, ${formattedDate} at ${formattedTime}?`;
+  // Check if this is a free session (rate is 0 or client has free session reward)
+  const hasFreeSession = window.trackerData && window.trackerData.hasFreeSession;
+  const isFreeSession = parseFloat(sessionRate) === 0 || hasFreeSession;
+  
+  let bookingMessage = `Are you sure you want to book a session with ${trainerName} for ${specialtyName} on ${dayOfWeek}, ${formattedDate} at ${formattedTime}?`;
+  if (isFreeSession) {
+    bookingMessage += `\n\n🎉 This session will be FREE (using your reward)!`;
+  } else {
+    bookingMessage += `\n\nPrice: ${formatCurrency(sessionRate)}`;
+  }
+  
+  bookingConfirmText.textContent = bookingMessage;
   
   // Remove previous event listeners
   const newConfirmBtn = confirmBookingBtn.cloneNode(true);
@@ -527,7 +748,7 @@ function bookSession(availabilityId, calculatedDate, trainerName, specialtyName,
   
   // Add new event listener
   newConfirmBtn.addEventListener('click', async () => {
-    await confirmBooking(availabilityId, calculatedDate, bookingModal);
+    await confirmBooking(availabilityId, calculatedDate, bookingModal, isFreeSession);
   });
   
   bookingModal.show();
@@ -536,7 +757,7 @@ function bookSession(availabilityId, calculatedDate, trainerName, specialtyName,
 /**
  * Confirm booking
  */
-async function confirmBooking(availabilityId, calculatedDate, modal) {
+async function confirmBooking(availabilityId, calculatedDate, modal, useFreeSession = false) {
   const userEmail = localStorage.getItem('userEmail');
   if (!userEmail) {
     alert('Please log in to book a session.');
@@ -551,15 +772,66 @@ async function confirmBooking(availabilityId, calculatedDate, modal) {
       },
       body: JSON.stringify({
         availabilityId: availabilityId,
-        calculatedDate: calculatedDate
+        calculatedDate: calculatedDate,
+        useFreeSession: useFreeSession
       }),
     });
     
     const data = await response.json();
     
+    console.log('Booking response:', data);
+    
     if (data.success) {
       // Close modal
       modal.hide();
+      
+      console.log('Session booked successfully, sessionId:', data.sessionId, 'Status:', data.status, 'Total Completed:', data.totalCompleted);
+      
+      // Immediately update tracker with the data from booking response if available
+      if (data.totalCompleted !== undefined && data.totalCompleted !== null) {
+        console.log('Updating tracker immediately with booking response data...', {
+          totalCompleted: data.totalCompleted,
+          status: data.status,
+          sessionId: data.sessionId
+        });
+        
+        // Calculate tracker values from totalCompleted
+        const allTimeCompleted = parseInt(data.totalCompleted) || 0;
+        const currentCycleCount = allTimeCompleted % 10;
+        const cyclesCompleted = Math.floor(allTimeCompleted / 10);
+        
+        console.log('Calculated values:', { allTimeCompleted, currentCycleCount, cyclesCompleted });
+        
+        // Update the display immediately
+        const allTimeElement = document.getElementById('allTimeCompleted');
+        if (allTimeElement) {
+          allTimeElement.textContent = allTimeCompleted;
+          console.log('Updated allTimeCompleted element to:', allTimeCompleted);
+        } else {
+          console.error('allTimeCompleted element not found!');
+        }
+        
+        const currentCycleElement = document.getElementById('currentCycleCount');
+        if (currentCycleElement) {
+          currentCycleElement.textContent = currentCycleCount;
+          console.log('Updated currentCycleCount element to:', currentCycleCount);
+        } else {
+          console.error('currentCycleCount element not found!');
+        }
+        
+        // Update circular progress
+        updateCircularProgress(currentCycleCount);
+        console.log('Updated circular progress to:', currentCycleCount);
+      } else {
+        console.warn('No totalCompleted in booking response:', data);
+      }
+      
+      // Small delay to ensure database commit completes, then reload full tracker data
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Reload full tracker data from server (this will get accurate calories, rewards, etc.)
+      console.log('Reloading full tracker data from server...');
+      await loadTrackerData();
       
       // Reload find sessions
       await loadFindSessions();
@@ -571,7 +843,10 @@ async function confirmBooking(availabilityId, calculatedDate, modal) {
         await loadMySessions();
       }
       
-      alert('Session booked successfully!');
+      const successMessage = useFreeSession 
+        ? 'Session booked successfully using your free session reward! 🎉'
+        : 'Session booked successfully!';
+      alert(successMessage);
     } else {
       alert(data.message || 'Failed to book session. Please try again.');
     }
@@ -644,8 +919,9 @@ async function cancelSession(sessionId) {
     }
     
     if (data.success) {
-      // Reload sessions
+      // Reload sessions and tracker data
       await loadMySessions();
+      await loadTrackerData();
       
       // Show success message
       if (typeof showSuccessModal === 'function') {
