@@ -799,12 +799,19 @@ namespace MyApp.Namespace
                 }
 
                 // Query sessions with related data
+                // Note: We use LEFT JOIN for Clients and Users to still show bookings even if client account is deleted
+                // This preserves historical booking data for trainers
                 string query = @"
                     SELECT 
                         sb.SessionID,
                         sb.SessionDate,
                         sb.StartTime,
-                        CONCAT(u.FirstName, ' ', u.LastName) AS ClientName,
+                        CASE 
+                            WHEN u.IsDeleted = 1 OR c.IsDeleted = 1 THEN 
+                                CONCAT(COALESCE(u.FirstName, ''), ' ', COALESCE(u.LastName, ''), ' (Account Deleted)')
+                            ELSE 
+                                CONCAT(u.FirstName, ' ', u.LastName)
+                        END AS ClientName,
                         s.SpecialtyName,
                         sb.Status,
                         r.RoomName,
@@ -812,8 +819,8 @@ namespace MyApp.Namespace
                         COALESCE(p.Status, 'Pending') AS PaymentStatus,
                         sb.BookingDate
                     FROM SessionBooking sb
-                    INNER JOIN Clients c ON sb.ClientID = c.ClientID
-                    INNER JOIN Users u ON c.ClientID = u.UserID
+                    LEFT JOIN Clients c ON sb.ClientID = c.ClientID
+                    LEFT JOIN Users u ON c.ClientID = u.UserID
                     INNER JOIN Specialties s ON sb.SpecialtyID = s.SpecialtyID
                     LEFT JOIN Rooms r ON sb.RoomID = r.RoomID
                     LEFT JOIN Payments p ON sb.SessionID = p.SessionID AND p.IsDeleted = 0

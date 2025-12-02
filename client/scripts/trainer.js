@@ -255,8 +255,13 @@ async function loadSessionsData() {
       const formattedPrice = formatCurrency(session.price);
       const formattedBookingDate = session.bookingDate ? formatDateTime(session.bookingDate) : 'N/A';
       
+      // Escape single quotes in client name for onclick handler
+      const escapedClientName = (session.clientName || '').replace(/'/g, "\\'");
+      const escapedSpecialtyName = (session.specialtyName || '').replace(/'/g, "\\'");
+      const escapedRoomName = ((session.roomName || 'Not assigned')).replace(/'/g, "\\'");
+      
       return `
-        <tr>
+        <tr style="cursor: pointer;" onclick="showTrainerSessionDetails(${session.sessionId}, '${escapedClientName}', '${escapedSpecialtyName}', '${formattedDate}', '${formattedTime}', '${escapedRoomName}', '${formattedPrice}', '${session.status}', '${session.paymentStatus}', '${formattedBookingDate}')" onmouseover="this.style.backgroundColor='rgba(255,255,255,0.1)'" onmouseout="this.style.backgroundColor=''">
           <td>${formattedDate}</td>
           <td>${formattedTime}</td>
           <td>${session.clientName}</td>
@@ -274,6 +279,43 @@ async function loadSessionsData() {
     console.error('Error loading sessions data:', error);
     sessionsDataContainer.innerHTML = '<p class="text-danger">Error loading sessions data. Please try again later.</p>';
   }
+}
+
+/**
+ * Show session details in a modal
+ */
+function showTrainerSessionDetails(sessionId, clientName, specialtyName, date, time, room, price, status, paymentStatus, bookingDate) {
+  // Set modal content
+  document.getElementById('trainerDetailDate').textContent = date;
+  document.getElementById('trainerDetailTime').textContent = time;
+  document.getElementById('trainerDetailClient').textContent = clientName;
+  document.getElementById('trainerDetailSpecialty').textContent = specialtyName;
+  document.getElementById('trainerDetailRoom').textContent = room;
+  document.getElementById('trainerDetailPrice').textContent = price;
+  document.getElementById('trainerDetailBookingDate').textContent = bookingDate;
+  
+  // Set status badge
+  const statusColors = {
+    'Pending': 'warning',
+    'Confirmed': 'info',
+    'Completed': 'success',
+    'Cancelled': 'danger'
+  };
+  const statusColor = statusColors[status] || 'secondary';
+  document.getElementById('trainerDetailStatus').innerHTML = `<span class="badge bg-${statusColor}">${status}</span>`;
+  
+  // Set payment status badge
+  const paymentColors = {
+    'Pending': 'warning',
+    'Completed': 'success',
+    'Failed': 'danger'
+  };
+  const paymentColor = paymentColors[paymentStatus] || 'secondary';
+  document.getElementById('trainerDetailPaymentStatus').innerHTML = `<span class="badge bg-${paymentColor}">${paymentStatus}</span>`;
+  
+  // Show modal
+  const modal = new bootstrap.Modal(document.getElementById('sessionDetailsModal'));
+  modal.show();
 }
 
 /**
@@ -773,4 +815,5 @@ window.handleAvailabilitySubmit = handleAvailabilitySubmit;
 window.deleteAvailabilitySlot = deleteAvailabilitySlot;
 window.loadSessionsData = loadSessionsData;
 window.loadAvailabilityData = loadAvailabilityData;
+window.showTrainerSessionDetails = showTrainerSessionDetails;
 

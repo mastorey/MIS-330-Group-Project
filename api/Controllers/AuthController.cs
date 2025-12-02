@@ -32,11 +32,12 @@ namespace MyApp.Namespace
             {
                 using var connection = _dbUtility.GetConnection();
                 
-                // Query user by email
+                // Query user by email (exclude deleted accounts)
                 string query = @"
                     SELECT Email, Password, UserType, FirstName, LastName 
                     FROM Users 
-                    WHERE Email = @email";
+                    WHERE Email = @email 
+                    AND IsDeleted = 0";
 
                 using var command = new MySqlCommand(query, connection);
                 command.Parameters.AddWithValue("@email", request.Email.ToLower().Trim());
@@ -511,6 +512,109 @@ namespace MyApp.Namespace
                 });
             }
         }
+
+        [HttpDelete("profile/delete")]
+        public IActionResult DeleteProfile([FromBody] DeleteAccountRequest request)
+        {
+            if (string.IsNullOrEmpty(request.Email))
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Email is required"
+                });
+            }
+
+            try
+            {
+                using var connection = _dbUtility.GetConnection();
+                
+                // First, verify the user exists and get their UserID
+                string getUserQuery = "SELECT UserID, UserType FROM Users WHERE Email = @email AND IsDeleted = 0";
+                int userId = 0;
+                string userType = "";
+                
+                using (var getUserCommand = new MySqlCommand(getUserQuery, connection))
+                {
+                    getUserCommand.Parameters.AddWithValue("@email", request.Email.ToLower().Trim());
+                    using var getUserReader = getUserCommand.ExecuteReader();
+                    
+                    if (!getUserReader.Read())
+                    {
+                        return NotFound(new
+                        {
+                            success = false,
+                            message = "User not found"
+                        });
+                    }
+                    
+                    userId = getUserReader.GetInt32("UserID");
+                    userType = getUserReader.GetString("UserType");
+                }
+
+                // Soft delete the user (set IsDeleted = 1)
+                // This will cascade to child tables due to foreign key constraints, but we'll also soft delete those
+                string deleteUserQuery = "UPDATE Users SET IsDeleted = 1 WHERE UserID = @userId";
+                using var deleteUserCommand = new MySqlCommand(deleteUserQuery, connection);
+                deleteUserCommand.Parameters.AddWithValue("@userId", userId);
+                int userRowsAffected = deleteUserCommand.ExecuteNonQuery();
+
+                if (userRowsAffected == 0)
+                {
+                    return StatusCode(500, new
+                    {
+                        success = false,
+                        message = "Failed to delete user account"
+                    });
+                }
+
+                // Soft delete from child table
+                string deleteChildQuery = "";
+                if (userType == "Client")
+                {
+                    deleteChildQuery = "UPDATE Clients SET IsDeleted = 1 WHERE ClientID = @userId";
+                }
+                else if (userType == "Trainer")
+                {
+                    deleteChildQuery = "UPDATE Trainers SET IsDeleted = 1 WHERE TrainerID = @userId";
+                }
+                else if (userType == "Admin")
+                {
+                    deleteChildQuery = "UPDATE Admins SET IsDeleted = 1 WHERE AdminID = @userId";
+                }
+
+                if (!string.IsNullOrEmpty(deleteChildQuery))
+                {
+                    using var deleteChildCommand = new MySqlCommand(deleteChildQuery, connection);
+                    deleteChildCommand.Parameters.AddWithValue("@userId", userId);
+                    deleteChildCommand.ExecuteNonQuery();
+                }
+
+                return Ok(new
+                {
+                    success = true,
+                    message = "Account deleted successfully"
+                });
+            }
+            catch (MySqlException ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "Database error occurred",
+                    error = ex.Message
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "An error occurred while deleting account",
+                    error = ex.Message
+                });
+            }
+        }
     }
 
     public class LoginRequest
@@ -541,6 +645,11 @@ namespace MyApp.Namespace
         public string? Phone { get; set; }
         public string? Certification { get; set; }
         public decimal? Rate { get; set; }
+    }
+
+    public class DeleteAccountRequest
+    {
+        public string Email { get; set; } = string.Empty;
     }
 }
 

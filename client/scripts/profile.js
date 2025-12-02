@@ -487,7 +487,6 @@ async function handleDeleteAccount() {
   }
 
   try {
-    // TODO: Replace with actual API endpoint
     const response = await fetch(`${API_BASE_URL}/auth/profile/delete`, {
       method: 'DELETE',
       headers: {
@@ -496,9 +495,27 @@ async function handleDeleteAccount() {
       body: JSON.stringify({ email: userEmail }),
     });
 
-    const data = await response.json();
+    if (!response.ok) {
+      let errorMessage = 'Failed to delete account. Please try again.';
+      try {
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorMessage;
+        } else {
+          const errorText = await response.text();
+          errorMessage = errorText || errorMessage;
+        }
+      } catch {
+        errorMessage = `Error ${response.status}: ${response.statusText || 'Unknown error'}`;
+      }
+      alert(errorMessage);
+      return;
+    }
 
-    if (response.ok) {
+    const data = await response.json();
+    
+    if (data.success) {
       // Clear authentication state
       localStorage.clear();
       sessionStorage.clear();
