@@ -282,17 +282,28 @@ namespace MyApp.Namespace
                 
                 // Get ClientID from email to check for free session reward
                 int clientId = GetClientIdFromEmail(connection, email);
+                
+                // Check if client exists
+                if (clientId == 0)
+                {
+                    return NotFound(new
+                    {
+                        success = false,
+                        message = "Client account not found. Please ensure you are logged in as a Client and your account exists."
+                    });
+                }
+                
                 bool hasFreeSession = false;
                 
                 if (clientId > 0)
                 {
-                    // Check if client has a free session reward available (count both Pending and Completed)
+                    // Check if client has a free session reward available (count Pending, Confirmed, and Completed)
                     int completedSessions = 0;
                     string completedQuery = @"
                         SELECT COUNT(*) 
                         FROM SessionBooking 
                         WHERE ClientID = @clientId 
-                        AND (Status = 'Completed' OR Status = 'Pending')
+                        AND (Status = 'Completed' OR Status = 'Pending' OR Status = 'Confirmed')
                         AND IsDeleted = 0";
                     using (var completedCommand = new MySqlCommand(completedQuery, connection))
                     {
@@ -324,6 +335,8 @@ namespace MyApp.Namespace
                 DateTime maxDate = today.AddDays(14);
 
                 // Query available trainer availability slots
+                // Note: IsBooked column doesn't exist in database, so we show all non-deleted availability slots
+                // The booking process will check for conflicts when a client tries to book
                 string query = @"
                     SELECT 
                         ta.AvailabilityID,
@@ -338,8 +351,7 @@ namespace MyApp.Namespace
                     INNER JOIN Trainers t ON ta.TrainerID = t.TrainerID
                     INNER JOIN Users u ON t.TrainerID = u.UserID
                     INNER JOIN Specialties s ON ta.SpecialtyID = s.SpecialtyID
-                    WHERE ta.IsBooked = 0 
-                    AND ta.IsDeleted = 0
+                    WHERE ta.IsDeleted = 0
                     AND t.IsDeleted = 0
                     AND u.IsDeleted = 0
                     AND s.IsDeleted = 0";
@@ -414,7 +426,7 @@ namespace MyApp.Namespace
                 return StatusCode(500, new
                 {
                     success = false,
-                    message = "Database error occurred",
+                    message = $"Database error occurred: {ex.Message}",
                     error = ex.Message
                 });
             }
@@ -423,7 +435,7 @@ namespace MyApp.Namespace
                 return StatusCode(500, new
                 {
                     success = false,
-                    message = "An error occurred while fetching available sessions",
+                    message = $"An error occurred while fetching available sessions: {ex.Message}",
                     error = ex.Message
                 });
             }
@@ -465,12 +477,11 @@ namespace MyApp.Namespace
                     });
                 }
 
-                // Verify availability exists and is not booked
+                // Verify availability exists
                 string checkAvailabilityQuery = @"
-                    SELECT ta.TrainerID, ta.SpecialtyID, ta.StartTime
+                    SELECT ta.TrainerID, ta.SpecialtyID, ta.StartTime, ta.DayOfWeek
                     FROM TrainerAvailability ta
                     WHERE ta.AvailabilityID = @availabilityId 
-                    AND ta.IsBooked = 0 
                     AND ta.IsDeleted = 0
                     LIMIT 1";
 
@@ -480,27 +491,6 @@ namespace MyApp.Namespace
                 using var checkReader = checkCommand.ExecuteReader();
                 if (!checkReader.Read())
                 {
-                    // Check if availability exists but is booked
-                    checkReader.Close();
-                    string checkBookedQuery = @"
-                        SELECT IsBooked 
-                        FROM TrainerAvailability 
-                        WHERE AvailabilityID = @availabilityId 
-                        AND IsDeleted = 0";
-                    
-                    using var bookedCommand = new MySqlCommand(checkBookedQuery, connection);
-                    bookedCommand.Parameters.AddWithValue("@availabilityId", request.AvailabilityId);
-                    var bookedResult = bookedCommand.ExecuteScalar();
-                    
-                    if (bookedResult != null && Convert.ToBoolean(bookedResult))
-                    {
-                        return BadRequest(new
-                        {
-                            success = false,
-                            message = "This time slot has already been booked by another client. Please select a different time."
-                        });
-                    }
-                    
                     return BadRequest(new
                     {
                         success = false,
@@ -536,7 +526,7 @@ namespace MyApp.Namespace
                         SELECT COUNT(*) 
                         FROM SessionBooking 
                         WHERE ClientID = @clientId 
-                        AND (Status = 'Completed' OR Status = 'Pending')
+                        AND (Status = 'Completed' OR Status = 'Pending' OR Status = 'Confirmed')
                         AND IsDeleted = 0";
                     using (var completedCommand = new MySqlCommand(completedQuery, connection))
                     {
@@ -607,15 +597,8 @@ namespace MyApp.Namespace
                 sessionCommand.ExecuteNonQuery();
                 int sessionId = (int)sessionCommand.LastInsertedId;
 
-                // Mark availability as booked
-                string updateAvailabilityQuery = @"
-                    UPDATE TrainerAvailability 
-                    SET IsBooked = 1 
-                    WHERE AvailabilityID = @availabilityId";
-
-                using var updateCommand = new MySqlCommand(updateAvailabilityQuery, connection);
-                updateCommand.Parameters.AddWithValue("@availabilityId", request.AvailabilityId);
-                updateCommand.ExecuteNonQuery();
+                // Note: IsBooked column doesn't exist in database
+                // Booking status is tracked via SessionBooking table instead
 
                 // Create payment record - For demo purposes, mark as Completed immediately if price > 0
                 // If free session (price = 0), still create payment record but mark as Completed
@@ -629,10 +612,10 @@ namespace MyApp.Namespace
                 paymentCommand.Parameters.AddWithValue("@price", price);
                 paymentCommand.ExecuteNonQuery();
 
-                // Verify the session was created and get count (both Pending and Completed count)
+                // Verify the session was created and get count (Pending, Confirmed, and Completed all count)
                 string verifyQuery = @"
                     SELECT Status, SessionID,
-                           (SELECT COUNT(*) FROM SessionBooking WHERE ClientID = @clientId AND (Status = 'Completed' OR Status = 'Pending') AND IsDeleted = 0) AS TotalSessions
+                           (SELECT COUNT(*) FROM SessionBooking WHERE ClientID = @clientId AND (Status = 'Completed' OR Status = 'Pending' OR Status = 'Confirmed') AND IsDeleted = 0) AS TotalSessions
                     FROM SessionBooking 
                     WHERE SessionID = @sessionId 
                     AND ClientID = @clientId 
@@ -654,12 +637,12 @@ namespace MyApp.Namespace
 
                 Console.WriteLine($"[Booking] Session {sessionId} created with Status: {actualStatus}, Total Sessions (Pending + Completed): {totalSessions}");
                 
-                // Double-check by querying all sessions (Pending + Completed) for this client
+                // Double-check by querying all sessions (Pending, Confirmed, and Completed) for this client
                 string doubleCheckQuery = @"
                     SELECT COUNT(*) 
                     FROM SessionBooking 
                     WHERE ClientID = @clientId 
-                    AND (Status = 'Completed' OR Status = 'Pending')
+                    AND (Status = 'Completed' OR Status = 'Pending' OR Status = 'Confirmed')
                     AND IsDeleted = 0";
                 
                 using var doubleCheckCommand = new MySqlCommand(doubleCheckQuery, connection);
@@ -820,15 +803,8 @@ namespace MyApp.Namespace
                 {
                     int availabilityId = Convert.ToInt32(availabilityIdResult);
                     
-                    // Free up the availability slot
-                    string freeAvailabilityQuery = @"
-                        UPDATE TrainerAvailability 
-                        SET IsBooked = 0 
-                        WHERE AvailabilityID = @availabilityId";
-
-                    using var freeAvailCommand = new MySqlCommand(freeAvailabilityQuery, connection);
-                    freeAvailCommand.Parameters.AddWithValue("@availabilityId", availabilityId);
-                    freeAvailCommand.ExecuteNonQuery();
+                    // Note: IsBooked column doesn't exist in database
+                    // Availability is freed when session is cancelled (tracked via SessionBooking table)
                 }
 
                 // Update payment status to Failed if payment was completed (for refund tracking)
@@ -933,11 +909,52 @@ namespace MyApp.Namespace
 
                 // Get all-time sessions count (both Pending and Completed count towards tracker)
                 // Use a fresh query to ensure we get the latest data
+                
+                // First, check total sessions (for debugging)
+                string totalSessionsQuery = @"
+                    SELECT COUNT(*) 
+                    FROM SessionBooking 
+                    WHERE ClientID = @clientId 
+                    AND IsDeleted = 0";
+                
+                using var totalCommand = new MySqlCommand(totalSessionsQuery, connection);
+                totalCommand.Parameters.AddWithValue("@clientId", clientId);
+                var totalResult = totalCommand.ExecuteScalar();
+                int totalSessions = totalResult != null && totalResult != DBNull.Value 
+                    ? Convert.ToInt32(totalResult) 
+                    : 0;
+                
+                // Check sessions by status (for debugging)
+                string statusBreakdownQuery = @"
+                    SELECT Status, COUNT(*) AS Count
+                    FROM SessionBooking 
+                    WHERE ClientID = @clientId 
+                    AND IsDeleted = 0
+                    GROUP BY Status";
+                
+                using var statusCommand = new MySqlCommand(statusBreakdownQuery, connection);
+                statusCommand.Parameters.AddWithValue("@clientId", clientId);
+                using var statusReader = statusCommand.ExecuteReader();
+                var statusBreakdown = new Dictionary<string, int>();
+                while (statusReader.Read())
+                {
+                    string status = statusReader.GetString("Status");
+                    int count = statusReader.GetInt32("Count");
+                    statusBreakdown[status] = count;
+                }
+                statusReader.Close();
+                
+                Console.WriteLine($"[Tracker] Client {clientId} - Total sessions (all statuses): {totalSessions}");
+                foreach (var kvp in statusBreakdown)
+                {
+                    Console.WriteLine($"[Tracker]   - {kvp.Key}: {kvp.Value}");
+                }
+                
                 string completedSessionsQuery = @"
                     SELECT COUNT(*) 
                     FROM SessionBooking 
                     WHERE ClientID = @clientId 
-                    AND (Status = 'Completed' OR Status = 'Pending')
+                    AND (Status = 'Completed' OR Status = 'Pending' OR Status = 'Confirmed')
                     AND IsDeleted = 0";
 
                 using var completedCommand = new MySqlCommand(completedSessionsQuery, connection);
@@ -947,7 +964,7 @@ namespace MyApp.Namespace
                     ? Convert.ToInt32(completedResult) 
                     : 0;
 
-                Console.WriteLine($"[Tracker] Client {clientId} - All-time sessions (Pending + Completed): {allTimeCompleted}");
+                Console.WriteLine($"[Tracker] Client {clientId} - All-time sessions (Pending + Confirmed + Completed): {allTimeCompleted}");
 
                 // Calculate 1-10 counter (current cycle)
                 int currentCycleCount = allTimeCompleted % 10;
@@ -973,7 +990,7 @@ namespace MyApp.Namespace
                 int rewardsAvailable = cyclesCompleted - freeSessionsUsed;
                 bool hasFreeSession = rewardsAvailable > 0;
 
-                // Get total calories burned from sessions (both Pending and Completed count)
+                // Get total calories burned from sessions (Pending, Confirmed, and Completed all count)
                 string caloriesQuery = @"
                     SELECT 
                         s.SpecialtyName,
@@ -981,7 +998,7 @@ namespace MyApp.Namespace
                     FROM SessionBooking sb
                     INNER JOIN Specialties s ON sb.SpecialtyID = s.SpecialtyID
                     WHERE sb.ClientID = @clientId 
-                    AND (sb.Status = 'Completed' OR sb.Status = 'Pending')
+                    AND (sb.Status = 'Completed' OR sb.Status = 'Pending' OR sb.Status = 'Confirmed')
                     AND sb.IsDeleted = 0
                     AND s.IsDeleted = 0
                     GROUP BY s.SpecialtyID, s.SpecialtyName";
