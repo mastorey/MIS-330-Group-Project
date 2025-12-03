@@ -170,6 +170,29 @@
                   <small class="form-text text-muted">Set your hourly training rate</small>
                 </div>
 
+                <!-- Certification -->
+                <div class="mb-3">
+                  <label for="certification" class="form-label">Certification</label>
+                  <input
+                    type="text"
+                    class="form-control"
+                    id="certification"
+                    name="certification"
+                    placeholder="e.g., NASM-CPT, ACE-CPT"
+                  />
+                  <small class="form-text text-muted">Optional: Enter your fitness certifications</small>
+                </div>
+
+                <!-- Specialties -->
+                <div class="mb-3">
+                  <label class="form-label">Specialties <span class="text-danger">*</span></label>
+                  <div id="specialtiesContainer" class="border rounded p-3" style="max-height: 200px; overflow-y: auto; background-color: #f8f9fa;">
+                    <p class="text-muted mb-0">Loading specialties...</p>
+                  </div>
+                  <div class="invalid-feedback" id="specialtiesFeedback">Please select at least one specialty.</div>
+                  <small class="form-text text-muted">Select at least one training specialty</small>
+                </div>
+
                 <!-- Birthday -->
                 <div class="mb-3">
                   <label for="birthday" class="form-label">Birthday <span class="text-danger">*</span></label>
@@ -181,7 +204,6 @@
                     required
                   />
                   <div class="invalid-feedback">Please provide your birthday.</div>
-                  <small class="form-text text-muted">Must be 18 years or older</small>
                 </div>
 
                 <!-- Password -->

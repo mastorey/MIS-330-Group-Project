@@ -1,10 +1,15 @@
 // Trainer Sign Up Form Validation and Submission
 
+const API_BASE_URL = 'http://localhost:5176/api';
+
 document.addEventListener('DOMContentLoaded', function() {
   const form = document.getElementById('signupForm');
   const password = document.getElementById('password');
   const confirmPassword = document.getElementById('confirmPassword');
   const phone = document.getElementById('phone');
+
+  // Load specialties on page load
+  loadSpecialties();
 
   // Format phone number as user types
   phone.addEventListener('input', function(e) {
@@ -49,6 +54,44 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
+  // Age validation function
+  function isAtLeast18(birthday) {
+    if (!birthday) return false;
+    // Parse date string manually in local timezone to avoid UTC conversion issues
+    const [y, m, d] = birthday.split('-');
+    const birthDate = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age >= 18;
+  }
+
+  // Birthday validation
+  const birthdayInput = document.getElementById('birthday');
+  const birthdayFeedback = birthdayInput.nextElementSibling;
+  
+  birthdayInput.addEventListener('change', function() {
+    if (birthdayInput.value) {
+      if (!isAtLeast18(birthdayInput.value)) {
+        birthdayInput.setCustomValidity('You must be 18 years or older to make an account.');
+        birthdayInput.classList.add('is-invalid');
+        birthdayInput.classList.remove('is-valid');
+        birthdayFeedback.textContent = 'You must be 18 years or older to make an account.';
+      } else {
+        birthdayInput.setCustomValidity('');
+        birthdayInput.classList.remove('is-invalid');
+        birthdayInput.classList.add('is-valid');
+      }
+    } else {
+      birthdayInput.setCustomValidity('');
+      birthdayInput.classList.remove('is-invalid', 'is-valid');
+      birthdayFeedback.textContent = 'Please provide your birthday.';
+    }
+  });
+
   // Form submission handler
   form.addEventListener('submit', function(event) {
     event.preventDefault();
@@ -60,6 +103,17 @@ document.addEventListener('DOMContentLoaded', function() {
       confirmPassword.classList.add('is-invalid');
     } else {
       confirmPassword.setCustomValidity('');
+    }
+
+    // Check age requirement (only if birthday is provided)
+    if (birthdayInput.value && !isAtLeast18(birthdayInput.value)) {
+      birthdayInput.setCustomValidity('You must be 18 years or older to make an account.');
+      birthdayFeedback.textContent = 'You must be 18 years or older to make an account.';
+      birthdayInput.classList.add('is-invalid');
+      form.classList.add('was-validated');
+      return;
+    } else {
+      birthdayInput.setCustomValidity('');
     }
 
     // Check form validity
@@ -83,6 +137,24 @@ document.addEventListener('DOMContentLoaded', function() {
       rateInput.classList.remove('is-invalid');
     }
 
+    // Validate specialties - at least one must be selected
+    const specialtyCheckboxes = document.querySelectorAll('#specialtiesContainer input[type="checkbox"]:checked');
+    const specialtiesContainer = document.getElementById('specialtiesContainer');
+    const specialtiesFeedback = document.getElementById('specialtiesFeedback');
+    
+    if (specialtyCheckboxes.length === 0) {
+      if (specialtiesContainer) specialtiesContainer.classList.add('border-danger');
+      if (specialtiesFeedback) specialtiesFeedback.style.display = 'block';
+      form.classList.add('was-validated');
+      return;
+    } else {
+      if (specialtiesContainer) specialtiesContainer.classList.remove('border-danger');
+      if (specialtiesFeedback) specialtiesFeedback.style.display = 'none';
+    }
+
+    // Collect selected specialty IDs
+    const specialtyIds = Array.from(specialtyCheckboxes).map(cb => parseInt(cb.value));
+
     // If form is valid, prepare data for submission
     const formData = {
       FirstName: document.getElementById('firstName').value.trim(),
@@ -92,6 +164,8 @@ document.addEventListener('DOMContentLoaded', function() {
       Birthday: document.getElementById('birthday').value,
       Password: password.value,
       Rate: rateValue,
+      Certification: document.getElementById('certification').value.trim() || null,
+      SpecialtyIds: specialtyIds,
       UserType: 'trainer' // Will be normalized to "Trainer" on backend
     };
 
@@ -162,5 +236,53 @@ function createErrorMessageElement() {
   errorDiv.setAttribute('role', 'alert');
   form.insertBefore(errorDiv, form.querySelector('.d-grid'));
   return errorDiv;
+}
+
+/**
+ * Load all available specialties and populate checkboxes
+ */
+async function loadSpecialties() {
+  const specialtiesContainer = document.getElementById('specialtiesContainer');
+  if (!specialtiesContainer) return;
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/trainer/all-specialties`);
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch specialties');
+    }
+    
+    const data = await response.json();
+    
+    if (!data.success) {
+      throw new Error(data.message || 'Failed to load specialties');
+    }
+    
+    const specialties = data.data || [];
+    
+    if (specialties.length === 0) {
+      specialtiesContainer.innerHTML = '<p class="text-danger mb-0">No specialties available. Please contact support.</p>';
+      return;
+    }
+    
+    // Clear loading message
+    specialtiesContainer.innerHTML = '';
+    
+    // Create checkboxes for each specialty
+    specialties.forEach(specialty => {
+      const checkboxDiv = document.createElement('div');
+      checkboxDiv.className = 'form-check mb-2';
+      checkboxDiv.innerHTML = `
+        <input class="form-check-input" type="checkbox" value="${specialty.specialtyId}" id="specialty_${specialty.specialtyId}">
+        <label class="form-check-label" for="specialty_${specialty.specialtyId}">
+          ${specialty.specialtyName}
+        </label>
+      `;
+      specialtiesContainer.appendChild(checkboxDiv);
+    });
+  } catch (error) {
+    console.error('Error loading specialties:', error);
+    specialtiesContainer.innerHTML = '<p class="text-danger mb-0">Error loading specialties. Please refresh the page.</p>';
+  }
 }
 

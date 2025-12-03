@@ -109,6 +109,112 @@ namespace MyApp.Namespace
             }
         }
 
+        [HttpGet("today-sessions")]
+        public IActionResult GetTodaySessions([FromQuery] string email)
+        {
+            if (string.IsNullOrEmpty(email))
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Email is required"
+                });
+            }
+
+            // Verify user is admin
+            if (!IsAdmin(email))
+            {
+                return Forbid("Only admins can access this endpoint");
+            }
+
+            try
+            {
+                using var connection = _dbUtility.GetConnection();
+                
+                // Query today's sessions ordered by StartTime
+                string query = @"
+                    SELECT 
+                        sb.SessionID,
+                        sb.TrainerID,
+                        sb.ClientID,
+                        sb.SessionDate,
+                        sb.StartTime,
+                        CONCAT(ut.FirstName, ' ', ut.LastName) AS TrainerName,
+                        CONCAT(uc.FirstName, ' ', uc.LastName) AS ClientName,
+                        s.SpecialtyName,
+                        sb.SpecialtyID,
+                        r.RoomName,
+                        sb.RoomID,
+                        sb.Status,
+                        sb.Price
+                    FROM SessionBooking sb
+                    INNER JOIN Trainers t ON sb.TrainerID = t.TrainerID
+                    INNER JOIN Users ut ON t.TrainerID = ut.UserID
+                    INNER JOIN Clients c ON sb.ClientID = c.ClientID
+                    INNER JOIN Users uc ON c.ClientID = uc.UserID
+                    INNER JOIN Specialties s ON sb.SpecialtyID = s.SpecialtyID
+                    LEFT JOIN Rooms r ON sb.RoomID = r.RoomID
+                    WHERE sb.SessionDate = CURDATE()
+                    AND sb.Status != 'Cancelled'
+                    AND sb.IsDeleted = 0
+                    AND t.IsDeleted = 0
+                    AND c.IsDeleted = 0
+                    AND ut.IsDeleted = 0
+                    AND uc.IsDeleted = 0
+                    AND s.IsDeleted = 0
+                    ORDER BY sb.StartTime ASC";
+
+                using var command = new MySqlCommand(query, connection);
+                using var reader = command.ExecuteReader();
+                var sessionsList = new List<object>();
+
+                while (reader.Read())
+                {
+                    var session = new
+                    {
+                        sessionId = reader.GetInt32("SessionID"),
+                        trainerId = reader.GetInt32("TrainerID"),
+                        clientId = reader.GetInt32("ClientID"),
+                        sessionDate = reader.GetDateTime("SessionDate").ToString("yyyy-MM-dd"),
+                        startTime = reader.GetTimeSpan("StartTime").ToString(@"hh\:mm"),
+                        trainerName = reader.GetString("TrainerName"),
+                        clientName = reader.GetString("ClientName"),
+                        specialtyName = reader.GetString("SpecialtyName"),
+                        specialtyId = reader.GetInt32("SpecialtyID"),
+                        roomName = reader.IsDBNull(reader.GetOrdinal("RoomName")) ? null : reader.GetString("RoomName"),
+                        roomId = reader.IsDBNull(reader.GetOrdinal("RoomID")) ? (int?)null : reader.GetInt32("RoomID"),
+                        status = reader.GetString("Status"),
+                        price = reader.IsDBNull(reader.GetOrdinal("Price")) ? 0.00m : reader.GetDecimal("Price")
+                    };
+                    sessionsList.Add(session);
+                }
+
+                return Ok(new
+                {
+                    success = true,
+                    data = sessionsList
+                });
+            }
+            catch (MySqlException ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "Database error occurred",
+                    error = ex.Message
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "An error occurred while fetching today's sessions",
+                    error = ex.Message
+                });
+            }
+        }
+
         [HttpGet("all-sessions")]
         public IActionResult GetAllSessions([FromQuery] string email)
         {
@@ -504,6 +610,117 @@ namespace MyApp.Namespace
             }
         }
 
+        [HttpPut("sessions/{id}/complete")]
+        public IActionResult CompleteSession(int id, [FromQuery] string email)
+        {
+            if (string.IsNullOrEmpty(email))
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Email is required"
+                });
+            }
+
+            // Verify user is admin
+            if (!IsAdmin(email))
+            {
+                return Forbid("Only admins can access this endpoint");
+            }
+
+            try
+            {
+                using var connection = _dbUtility.GetConnection();
+                
+                // Check if session exists
+                string checkSessionQuery = @"
+                    SELECT SessionID, Status
+                    FROM SessionBooking
+                    WHERE SessionID = @sessionId
+                    AND IsDeleted = 0";
+
+                string currentStatus = null;
+                using (var checkCommand = new MySqlCommand(checkSessionQuery, connection))
+                {
+                    checkCommand.Parameters.AddWithValue("@sessionId", id);
+                    using var reader = checkCommand.ExecuteReader();
+                    
+                    if (!reader.Read())
+                    {
+                        return NotFound(new
+                        {
+                            success = false,
+                            message = "Session not found"
+                        });
+                    }
+
+                    currentStatus = reader.GetString("Status");
+                }
+
+                if (currentStatus == "Completed")
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        message = "Session is already completed"
+                    });
+                }
+
+                if (currentStatus == "Cancelled")
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        message = "Cannot complete a cancelled session"
+                    });
+                }
+
+                // Update session status to Completed
+                string updateQuery = @"
+                    UPDATE SessionBooking 
+                    SET Status = 'Completed'
+                    WHERE SessionID = @sessionId";
+
+                using var updateCommand = new MySqlCommand(updateQuery, connection);
+                updateCommand.Parameters.AddWithValue("@sessionId", id);
+
+                int rowsAffected = updateCommand.ExecuteNonQuery();
+
+                if (rowsAffected == 0)
+                {
+                    return StatusCode(500, new
+                    {
+                        success = false,
+                        message = "Failed to complete session"
+                    });
+                }
+
+                return Ok(new
+                {
+                    success = true,
+                    message = "Session marked as completed successfully"
+                });
+            }
+            catch (MySqlException ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "Database error occurred",
+                    error = ex.Message
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "An error occurred while completing session",
+                    error = ex.Message
+                });
+            }
+        }
+
         [HttpPut("unassign-room")]
         public IActionResult UnassignRoom([FromBody] UnassignRoomRequest request, [FromQuery] string email)
         {
@@ -854,17 +1071,43 @@ namespace MyApp.Namespace
                         u.UserID AS TrainerID,
                         CONCAT(u.FirstName, ' ', u.LastName) AS TrainerName,
                         COUNT(DISTINCT ta.AvailabilityID) AS TotalAvailabilitySlots,
-                        COUNT(sb.SessionID) AS TotalBookedSessions,
+                        COUNT(CASE WHEN sb.SessionDate >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) THEN sb.SessionID END) AS TotalBookedSessions,
                         CASE 
-                            WHEN COUNT(DISTINCT ta.AvailabilityID) > 0 
-                            THEN ROUND((COUNT(sb.SessionID) / COUNT(DISTINCT ta.AvailabilityID)) * 100, 2)
+                            WHEN SUM(
+                                GREATEST(0, FLOOR((30 + 
+                                (CASE ta.DayOfWeek
+                                    WHEN 'Monday' THEN 0
+                                    WHEN 'Tuesday' THEN 1
+                                    WHEN 'Wednesday' THEN 2
+                                    WHEN 'Thursday' THEN 3
+                                    WHEN 'Friday' THEN 4
+                                    WHEN 'Saturday' THEN 5
+                                    WHEN 'Sunday' THEN 6
+                                END - WEEKDAY(DATE_SUB(CURDATE(), INTERVAL 30 DAY)) + 7) % 7) / 7))
+                            ) > 0
+                            THEN LEAST(100.00, ROUND(
+                                (COUNT(CASE WHEN sb.SessionDate >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) THEN sb.SessionID END) / 
+                                NULLIF(SUM(
+                                    GREATEST(0, FLOOR((30 + 
+                                    (CASE ta.DayOfWeek
+                                        WHEN 'Monday' THEN 0
+                                        WHEN 'Tuesday' THEN 1
+                                        WHEN 'Wednesday' THEN 2
+                                        WHEN 'Thursday' THEN 3
+                                        WHEN 'Friday' THEN 4
+                                        WHEN 'Saturday' THEN 5
+                                        WHEN 'Sunday' THEN 6
+                                    END - WEEKDAY(DATE_SUB(CURDATE(), INTERVAL 30 DAY)) + 7) % 7) / 7))
+                                ), 1)) * 100, 2))
                             ELSE 0.00
                         END AS UtilizationRate,
-                        IFNULL(SUM(sb.Price), 0.00) AS RevenueGenerated
+                        IFNULL(SUM(CASE WHEN sb.SessionDate >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) THEN sb.Price ELSE 0 END), 0.00) AS RevenueGenerated
                     FROM Users u
                     JOIN Trainers t ON u.UserID = t.TrainerID
                     LEFT JOIN TrainerAvailability ta ON t.TrainerID = ta.TrainerID AND ta.IsDeleted = 0
-                    LEFT JOIN SessionBooking sb ON t.TrainerID = sb.TrainerID AND sb.IsDeleted = 0
+                    LEFT JOIN SessionBooking sb ON t.TrainerID = sb.TrainerID 
+                        AND sb.IsDeleted = 0
+                        AND sb.SessionDate >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
                     WHERE u.UserType = 'Trainer' AND u.IsDeleted = 0 AND t.IsDeleted = 0
                     GROUP BY u.UserID, u.FirstName, u.LastName
                     ORDER BY UtilizationRate DESC";

@@ -114,6 +114,32 @@ namespace MyApp.Namespace
                 });
             }
 
+            // Validate age requirement (must be at least 18 years old)
+            try
+            {
+                DateTime birthday = DateTime.Parse(request.Birthday);
+                DateTime today = DateTime.Today;
+                int age = today.Year - birthday.Year;
+                if (birthday.Date > today.AddYears(-age)) age--;
+
+                if (age < 18)
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        message = "You must be at least 18 years old to sign up"
+                    });
+                }
+            }
+            catch (FormatException)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Invalid birthday format"
+                });
+            }
+
             // Normalize UserType to proper case (Client, Trainer, Admin)
             string normalizedUserType = request.UserType.ToLower();
             if (normalizedUserType == "client")
@@ -135,8 +161,8 @@ namespace MyApp.Namespace
             {
                 using var connection = _dbUtility.GetConnection();
                 
-                // Check if email already exists
-                string checkQuery = "SELECT Email FROM Users WHERE Email = @email";
+                // Check if email already exists (only for non-deleted accounts)
+                string checkQuery = "SELECT Email FROM Users WHERE Email = @email AND IsDeleted = 0";
                 bool emailExists = false;
                 using (var checkCommand = new MySqlCommand(checkQuery, connection))
                 {
@@ -197,8 +223,8 @@ namespace MyApp.Namespace
                 else if (normalizedUserType == "Trainer")
                 {
                     childTableQuery = @"
-                        INSERT INTO Trainers (TrainerID, Phone, Rate)
-                        VALUES (@userId, @phone, @rate)";
+                        INSERT INTO Trainers (TrainerID, Phone, Rate, Certification)
+                        VALUES (@userId, @phone, @rate, @certification)";
                 }
                 else if (normalizedUserType == "Admin")
                 {
@@ -222,6 +248,7 @@ namespace MyApp.Namespace
                         insertChildCommand.Parameters.AddWithValue("@phone", request.Phone ?? (object)DBNull.Value);
                         decimal rateValue = request.Rate.HasValue && request.Rate.Value >= 0 ? request.Rate.Value : 0.00m;
                         insertChildCommand.Parameters.AddWithValue("@rate", rateValue);
+                        insertChildCommand.Parameters.AddWithValue("@certification", request.Certification ?? (object)DBNull.Value);
                     }
 
                     int childRowsAffected = insertChildCommand.ExecuteNonQuery();
@@ -238,6 +265,45 @@ namespace MyApp.Namespace
                             success = false,
                             message = "Failed to create account in child table"
                         });
+                    }
+
+                    // Handle trainer specialties if provided
+                    if (normalizedUserType == "Trainer" && request.SpecialtyIds != null && request.SpecialtyIds.Count > 0)
+                    {
+                        // Validate all specialty IDs exist and are not deleted
+                        foreach (int specialtyId in request.SpecialtyIds)
+                        {
+                            using var checkCommand = new MySqlCommand("SELECT COUNT(*) FROM Specialties WHERE SpecialtyID = @specialtyId AND IsDeleted = 0", connection);
+                            checkCommand.Parameters.AddWithValue("@specialtyId", specialtyId);
+                            int count = Convert.ToInt32(checkCommand.ExecuteScalar());
+                            
+                            if (count == 0)
+                            {
+                                // Invalid specialty ID - log but don't fail the signup
+                                // The account is already created, so we'll just skip invalid specialties
+                                continue;
+                            }
+                        }
+
+                        // Insert specialties into TrainerSpecialties table
+                        foreach (int specialtyId in request.SpecialtyIds)
+                        {
+                            // Check if specialty exists and is not deleted
+                            using var checkCommand = new MySqlCommand("SELECT COUNT(*) FROM Specialties WHERE SpecialtyID = @specialtyId AND IsDeleted = 0", connection);
+                            checkCommand.Parameters.AddWithValue("@specialtyId", specialtyId);
+                            int count = Convert.ToInt32(checkCommand.ExecuteScalar());
+                            
+                            if (count > 0)
+                            {
+                                // Insert specialty
+                                using var insertSpecialtyCommand = new MySqlCommand(
+                                    "INSERT INTO TrainerSpecialties (TrainerID, SpecialtyID, IsDeleted, CreatedAt) VALUES (@trainerId, @specialtyId, 0, NOW())",
+                                    connection);
+                                insertSpecialtyCommand.Parameters.AddWithValue("@trainerId", userId);
+                                insertSpecialtyCommand.Parameters.AddWithValue("@specialtyId", specialtyId);
+                                insertSpecialtyCommand.ExecuteNonQuery();
+                            }
+                        }
                     }
                 }
 
@@ -633,6 +699,8 @@ namespace MyApp.Namespace
         public string UserType { get; set; } = string.Empty;
         public string? Phone { get; set; }
         public decimal? Rate { get; set; }
+        public string? Certification { get; set; }
+        public List<int>? SpecialtyIds { get; set; }
     }
 
     public class ProfileUpdateRequest

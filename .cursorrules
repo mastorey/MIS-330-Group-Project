@@ -73,7 +73,7 @@ Primary Key: TrainerID (INT)
 
 Foreign Key: TrainerID REFERENCES Users(UserID) ON DELETE CASCADE ON UPDATE CASCADE
 
-Columns: Certification (VARCHAR(255)), Phone (VARCHAR(20)), IsDeleted (BOOLEAN DEFAULT 0), CreatedAt (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
+Columns: Certification (VARCHAR(255)), Phone (VARCHAR(20)), Rate (DECIMAL(10,2) NOT NULL), IsDeleted (BOOLEAN DEFAULT 0), CreatedAt (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
 
 Admins Table
 
@@ -111,23 +111,33 @@ Primary Key: AvailabilityID (INT AUTO_INCREMENT)
 
 Foreign Keys: TrainerID REFERENCES Trainers(TrainerID) ON DELETE CASCADE ON UPDATE CASCADE, SpecialtyID REFERENCES Specialties(SpecialtyID) ON DELETE CASCADE ON UPDATE CASCADE
 
-Columns: DayOfWeek (VARCHAR(10) NOT NULL, CHECK: 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'), StartTime (TIME NOT NULL), IsBooked (BOOLEAN DEFAULT 0), IsDeleted (BOOLEAN DEFAULT 0), CreatedAt (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
+Columns: DayOfWeek (VARCHAR(10) NOT NULL, CHECK: 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'), StartTime (TIME NOT NULL), IsDeleted (BOOLEAN DEFAULT 0), CreatedAt (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
+
+Constraint: UNIQUE (TrainerID, SpecialtyID, DayOfWeek, StartTime)
 
 SessionBooking Table
 
 Primary Key: SessionID (INT AUTO_INCREMENT)
 
-Foreign Keys: TrainerID REFERENCES Trainers(TrainerID) ON DELETE CASCADE ON UPDATE CASCADE, ClientID REFERENCES Clients(ClientID) ON DELETE CASCADE ON UPDATE CASCADE, RoomID REFERENCES Rooms(RoomID) ON DELETE SET NULL ON UPDATE CASCADE, SpecialtyID REFERENCES Specialties(SpecialtyID) ON DELETE CASCADE ON UPDATE CASCADE
+Foreign Keys: TrainerID REFERENCES Trainers(TrainerID) ON DELETE CASCADE ON UPDATE CASCADE, ClientID REFERENCES Clients(ClientID) ON DELETE CASCADE ON UPDATE CASCADE, RoomID REFERENCES Rooms(RoomID) ON DELETE SET NULL ON UPDATE CASCADE, SpecialtyID REFERENCES Specialties(SpecialtyID) ON DELETE CASCADE ON UPDATE CASCADE, AvailabilityID REFERENCES TrainerAvailability(AvailabilityID) ON DELETE CASCADE ON UPDATE CASCADE
 
-Columns: SessionDate (DATE NOT NULL), StartTime (TIME NOT NULL), Status (VARCHAR(20) DEFAULT 'Pending', CHECK: 'Pending', 'Confirmed', 'Completed', 'Cancelled'), IsCancelled (BOOLEAN DEFAULT 0), BookingDate (TIMESTAMP DEFAULT CURRENT_TIMESTAMP), Price (DECIMAL(10,2) DEFAULT 0.00), IsDeleted (BOOLEAN DEFAULT 0), CreatedAt (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
+Columns: SessionDate (DATE NOT NULL), StartTime (TIME NOT NULL), Status (VARCHAR(20) NOT NULL DEFAULT 'Pending', CHECK: 'Pending', 'Confirmed', 'Completed', 'Cancelled'), IsCancelled (BOOLEAN DEFAULT 0), BookingDate (TIMESTAMP DEFAULT CURRENT_TIMESTAMP), Price (DECIMAL(10,2) NOT NULL), AvailabilityID (INT NOT NULL), IsDeleted (BOOLEAN DEFAULT 0), CreatedAt (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
+
+SessionCancellations Table
+
+Primary Key: CancellationID (INT AUTO_INCREMENT)
+
+Foreign Keys: SessionID REFERENCES SessionBooking(SessionID) ON DELETE CASCADE ON UPDATE CASCADE, CancelledBy REFERENCES Users(UserID) ON DELETE SET NULL ON UPDATE CASCADE
+
+Columns: SessionID (INT NOT NULL), CancellationReason (TEXT), CancelledBy (INT), CancelledAt (TIMESTAMP DEFAULT CURRENT_TIMESTAMP), IsDeleted (BOOLEAN DEFAULT 0), CreatedAt (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
 
 Payments Table
 
 Primary Key: PaymentID (INT AUTO_INCREMENT)
 
-Foreign Keys: ClientID REFERENCES Clients(ClientID) ON DELETE CASCADE ON UPDATE CASCADE, SessionID REFERENCES SessionBooking(SessionID) ON DELETE SET NULL ON UPDATE CASCADE
+Foreign Keys: ClientID REFERENCES Clients(ClientID) ON DELETE CASCADE ON UPDATE CASCADE, SessionID REFERENCES SessionBooking(SessionID) ON DELETE CASCADE ON UPDATE CASCADE
 
-Columns: Amount (DECIMAL(10,2) NOT NULL), Status (VARCHAR(20) DEFAULT 'Pending', CHECK: 'Pending', 'Completed', 'Failed'), TransactionDate (TIMESTAMP DEFAULT CURRENT_TIMESTAMP), IsDeleted (BOOLEAN DEFAULT 0), CreatedAt (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
+Columns: Amount (DECIMAL(10,2) NOT NULL), Status (VARCHAR(20) NOT NULL DEFAULT 'Pending', CHECK: 'Pending', 'Completed', 'Failed'), TransactionDate (TIMESTAMP DEFAULT CURRENT_TIMESTAMP), SessionID (INT), IsDeleted (BOOLEAN DEFAULT 0), CreatedAt (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
 
 Database Editing Restrictions
 

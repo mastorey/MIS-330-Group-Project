@@ -24,6 +24,11 @@ function initializeAdminPage() {
   
   // Load admin data for active tab
   loadAdminData();
+  
+  // Request notification permission on page load
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
 }
 
 /**
@@ -59,6 +64,11 @@ async function loadAdminData() {
     const allSessionsTab = document.getElementById('allSessionsTab');
     if (allSessionsTab && allSessionsTab.classList.contains('active')) {
       await loadAllSessions();
+    }
+    
+    const dailyCheckInTab = document.getElementById('dailyCheckInTab');
+    if (dailyCheckInTab && dailyCheckInTab.classList.contains('active')) {
+      await loadTodaySessions();
     }
   } catch (error) {
     console.error('Error loading admin data:', error);
@@ -979,6 +989,7 @@ function renderBookingStatusReport(data) {
     options: {
       responsive: true,
       maintainAspectRatio: true,
+      aspectRatio: 2.5,
       plugins: {
         legend: { position: 'bottom' },
         tooltip: {
@@ -1029,6 +1040,7 @@ function renderPaymentStatusReport(data) {
     options: {
       responsive: true,
       maintainAspectRatio: true,
+      aspectRatio: 2.5,
       plugins: {
         legend: { position: 'bottom' },
         tooltip: {
@@ -1215,6 +1227,495 @@ function renderTable(headers, rows) {
   });
 }
 
+// ============================================================================
+// Daily Check-In Functions
+// ============================================================================
+
+let notificationTimers = {};
+let notificationIntervals = {};
+let currentNoShowSessionId = null;
+
+/**
+ * Load and display today's sessions
+ */
+async function loadTodaySessions() {
+  const todaySessionsDataContainer = document.getElementById('todaySessionsData');
+  
+  if (!todaySessionsDataContainer) return;
+  
+  const userEmail = localStorage.getItem('userEmail');
+  if (!userEmail) {
+    todaySessionsDataContainer.innerHTML = '<p class="text-danger">Please log in to view sessions.</p>';
+    return;
+  }
+
+  try {
+    // Clear existing timers
+    clearAllNotificationTimers();
+    
+    // Fetch today's sessions data
+    const response = await fetch(`${API_BASE_URL}/admin/today-sessions?email=${encodeURIComponent(userEmail)}`);
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch today\'s sessions data');
+    }
+    
+    const data = await response.json();
+    
+    if (!data.success) {
+      throw new Error(data.message || 'Failed to load today\'s sessions');
+    }
+    
+    const sessionsList = data.data || [];
+    
+    // Render sessions table
+    renderTodaySessionsTable(sessionsList);
+    
+    // Set up notification timers
+    setupNotificationTimers(sessionsList);
+    
+  } catch (error) {
+    console.error('Error loading today\'s sessions data:', error);
+    todaySessionsDataContainer.innerHTML = '<p class="text-danger">Error loading today\'s sessions data. Please try again later.</p>';
+  }
+}
+
+/**
+ * Render today's sessions table with check-in functionality
+ */
+function renderTodaySessionsTable(sessions) {
+  const todaySessionsDataContainer = document.getElementById('todaySessionsData');
+  
+  if (sessions.length === 0) {
+    todaySessionsDataContainer.innerHTML = `
+      <div class="alert alert-info">
+        <p class="mb-0">No sessions scheduled for today.</p>
+      </div>
+    `;
+    return;
+  }
+  
+  todaySessionsDataContainer.innerHTML = `
+    <div class="table-responsive">
+      <table class="table table-dark table-striped table-hover">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Trainer</th>
+            <th>Client</th>
+            <th>Specialty</th>
+            <th>Room</th>
+            <th>Trainer Check-In</th>
+            <th>Client Check-In</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="todaySessionsTableBody">
+        </tbody>
+      </table>
+    </div>
+  `;
+  
+  const tbody = document.getElementById('todaySessionsTableBody');
+  const now = new Date();
+  const today = now.toISOString().split('T')[0];
+  
+  tbody.innerHTML = sessions.map(session => {
+    const checkInStatus = getCheckInStatus(session.sessionId);
+    const sessionDateTime = new Date(`${session.sessionDate}T${session.startTime}`);
+    const isPast15Minutes = isPastStartTime(session.sessionDate, session.startTime, 15);
+    const isCompleted = session.status === 'Completed';
+    const bothCheckedIn = checkInStatus.trainer && checkInStatus.client;
+    
+    // Determine row styling
+    let rowClass = '';
+    if (isCompleted) {
+      rowClass = 'table-success';
+    } else if (isPast15Minutes && !bothCheckedIn) {
+      rowClass = 'table-danger';
+    } else if (bothCheckedIn) {
+      rowClass = 'table-info';
+    }
+    
+    // Trainer check-in button
+    let trainerCheckInHtml = '';
+    if (isCompleted) {
+      trainerCheckInHtml = '<span class="badge bg-success">✓ Checked In</span>';
+    } else if (checkInStatus.trainer) {
+      trainerCheckInHtml = '<span class="badge bg-success">✓ Checked In</span>';
+    } else {
+      trainerCheckInHtml = `<button class="btn btn-sm btn-success" onclick="checkInTrainer(${session.sessionId})">Check In</button>`;
+    }
+    
+    // Client check-in button
+    let clientCheckInHtml = '';
+    if (isCompleted) {
+      clientCheckInHtml = '<span class="badge bg-success">✓ Checked In</span>';
+    } else if (checkInStatus.client) {
+      clientCheckInHtml = '<span class="badge bg-success">✓ Checked In</span>';
+    } else {
+      clientCheckInHtml = `<button class="btn btn-sm btn-success" onclick="checkInClient(${session.sessionId})">Check In</button>`;
+    }
+    
+    const formattedTime = formatTimeForToday(session.startTime);
+    const statusBadge = getStatusBadge(session.status);
+    const roomDisplay = session.roomName || 'Not assigned';
+    
+    return `
+      <tr class="${rowClass}" id="sessionRow_${session.sessionId}">
+        <td>${formattedTime}</td>
+        <td>${session.trainerName}</td>
+        <td>${session.clientName}</td>
+        <td>${session.specialtyName}</td>
+        <td>${roomDisplay}</td>
+        <td>${trainerCheckInHtml}</td>
+        <td>${clientCheckInHtml}</td>
+        <td>${statusBadge}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+/**
+ * Check in trainer for a session
+ */
+function checkInTrainer(sessionId) {
+  const checkInStatus = getCheckInStatus(sessionId);
+  const newStatus = {
+    trainer: true,
+    client: checkInStatus.client,
+    timestamp: Date.now()
+  };
+  
+  sessionStorage.setItem(`checkin_${sessionId}`, JSON.stringify(newStatus));
+  
+  // Update UI
+  updateCheckInUI(sessionId);
+  
+  // Check if both are checked in
+  if (newStatus.trainer && newStatus.client) {
+    completeSession(sessionId);
+  }
+}
+
+/**
+ * Check in client for a session
+ */
+function checkInClient(sessionId) {
+  const checkInStatus = getCheckInStatus(sessionId);
+  const newStatus = {
+    trainer: checkInStatus.trainer,
+    client: true,
+    timestamp: Date.now()
+  };
+  
+  sessionStorage.setItem(`checkin_${sessionId}`, JSON.stringify(newStatus));
+  
+  // Update UI
+  updateCheckInUI(sessionId);
+  
+  // Check if both are checked in
+  if (newStatus.trainer && newStatus.client) {
+    completeSession(sessionId);
+  }
+}
+
+/**
+ * Update check-in UI for a specific session
+ */
+function updateCheckInUI(sessionId) {
+  const checkInStatus = getCheckInStatus(sessionId);
+  const row = document.getElementById(`sessionRow_${sessionId}`);
+  if (!row) return;
+  
+  const cells = row.getElementsByTagName('td');
+  if (cells.length < 8) return;
+  
+  // Update trainer check-in (index 5)
+  if (checkInStatus.trainer) {
+    cells[5].innerHTML = '<span class="badge bg-success">✓ Checked In</span>';
+  } else {
+    cells[5].innerHTML = `<button class="btn btn-sm btn-success" onclick="checkInTrainer(${sessionId})">Check In</button>`;
+  }
+  
+  // Update client check-in (index 6)
+  if (checkInStatus.client) {
+    cells[6].innerHTML = '<span class="badge bg-success">✓ Checked In</span>';
+  } else {
+    cells[6].innerHTML = `<button class="btn btn-sm btn-success" onclick="checkInClient(${sessionId})">Check In</button>`;
+  }
+  
+  // Update row styling
+  if (checkInStatus.trainer && checkInStatus.client) {
+    row.classList.remove('table-danger');
+    row.classList.add('table-info');
+  }
+}
+
+/**
+ * Complete session when both parties are checked in
+ */
+async function completeSession(sessionId) {
+  const userEmail = localStorage.getItem('userEmail');
+  if (!userEmail) {
+    alert('Please log in to complete sessions.');
+    return;
+  }
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/admin/sessions/${sessionId}/complete?email=${encodeURIComponent(userEmail)}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.message || 'Failed to complete session');
+    }
+    
+    if (data.success) {
+      // Remove check-in data from sessionStorage
+      sessionStorage.removeItem(`checkin_${sessionId}`);
+      
+      // Clear notification timer and interval for this session
+      if (notificationTimers[sessionId]) {
+        clearTimeout(notificationTimers[sessionId]);
+        delete notificationTimers[sessionId];
+      }
+      if (notificationIntervals[sessionId]) {
+        clearInterval(notificationIntervals[sessionId]);
+        delete notificationIntervals[sessionId];
+      }
+      
+      // Reload sessions to show updated status
+      await loadTodaySessions();
+    } else {
+      alert(data.message || 'Failed to complete session. Please try again.');
+    }
+  } catch (error) {
+    console.error('Error completing session:', error);
+    alert('An error occurred while completing the session. Please try again.');
+  }
+}
+
+/**
+ * Set up notification timers for all sessions
+ */
+function setupNotificationTimers(sessions) {
+  clearAllNotificationTimers();
+  
+  sessions.forEach(session => {
+    // Skip if already completed
+    if (session.status === 'Completed') {
+      return;
+    }
+    
+    const checkInStatus = getCheckInStatus(session.sessionId);
+    // Skip if both already checked in
+    if (checkInStatus.trainer && checkInStatus.client) {
+      return;
+    }
+    
+    const sessionDateTime = new Date(`${session.sessionDate}T${session.startTime}`);
+    const notificationTime = new Date(sessionDateTime.getTime() + 15 * 60 * 1000); // 15 minutes after start
+    const now = new Date();
+    
+    // If notification time has already passed, trigger immediately
+    if (notificationTime <= now) {
+      handleNoShowNotification(session.sessionId, session);
+      return;
+    }
+    
+    // Calculate delay until notification
+    const delay = notificationTime.getTime() - now.getTime();
+    
+    // Set timer
+    const timerId = setTimeout(() => {
+      handleNoShowNotification(session.sessionId, session);
+    }, delay);
+    
+    notificationTimers[session.sessionId] = timerId;
+    
+    // Also set up interval to check every minute for sessions that are past the 15-minute mark
+    const intervalId = setInterval(() => {
+      const checkInStatus = getCheckInStatus(session.sessionId);
+      if (isPastStartTime(session.sessionDate, session.startTime, 15) && (!checkInStatus.trainer || !checkInStatus.client)) {
+        // Update row styling if needed
+        const row = document.getElementById(`sessionRow_${session.sessionId}`);
+        if (row && !row.classList.contains('table-danger')) {
+          row.classList.add('table-danger');
+        }
+      } else {
+        // Clear interval if both checked in or session completed
+        clearInterval(intervalId);
+        delete notificationIntervals[session.sessionId];
+      }
+    }, 60000); // Check every minute
+    
+    // Store interval ID
+    notificationIntervals[session.sessionId] = intervalId;
+  });
+}
+
+/**
+ * Clear all notification timers
+ */
+function clearAllNotificationTimers() {
+  Object.values(notificationTimers).forEach(timerId => {
+    clearTimeout(timerId);
+  });
+  Object.values(notificationIntervals).forEach(intervalId => {
+    clearInterval(intervalId);
+  });
+  notificationTimers = {};
+  notificationIntervals = {};
+}
+
+/**
+ * Handle no-show notification
+ */
+function handleNoShowNotification(sessionId, sessionData) {
+  const checkInStatus = getCheckInStatus(sessionId);
+  
+  // Don't show if both are already checked in
+  if (checkInStatus.trainer && checkInStatus.client) {
+    return;
+  }
+  
+  // Don't show if session is already completed
+  if (sessionData && sessionData.status === 'Completed') {
+    return;
+  }
+  
+  currentNoShowSessionId = sessionId;
+  
+  const trainerName = sessionData ? sessionData.trainerName : 'Trainer';
+  const clientName = sessionData ? sessionData.clientName : 'Client';
+  const startTime = sessionData ? formatTimeForToday(sessionData.startTime) : '';
+  
+  let message = `15 minutes have passed since the scheduled start time (${startTime}).<br><br>`;
+  
+  if (!checkInStatus.trainer && !checkInStatus.client) {
+    message += `<strong>Neither ${trainerName} nor ${clientName} have checked in.</strong>`;
+  } else if (!checkInStatus.trainer) {
+    message += `<strong>${trainerName} (Trainer) has not checked in.</strong>`;
+  } else {
+    message += `<strong>${clientName} (Client) has not checked in.</strong>`;
+  }
+  
+  message += '<br><br>What would you like to do?';
+  
+  document.getElementById('noShowModalMessage').innerHTML = message;
+  
+  // Show modal
+  const modal = new bootstrap.Modal(document.getElementById('noShowModal'));
+  modal.show();
+  
+  // Request browser notification permission if available
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification('No-Show Alert', {
+      body: `Session at ${startTime} - ${trainerName} & ${clientName} have not checked in`,
+      icon: '/favicon.ico'
+    });
+  } else if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+}
+
+/**
+ * Handle "Check In Both" button click
+ */
+function handleCheckInBoth() {
+  if (!currentNoShowSessionId) return;
+  
+  const sessionId = currentNoShowSessionId;
+  
+  // Check in both
+  const newStatus = {
+    trainer: true,
+    client: true,
+    timestamp: Date.now()
+  };
+  
+  sessionStorage.setItem(`checkin_${sessionId}`, JSON.stringify(newStatus));
+  
+  // Complete session
+  completeSession(sessionId);
+  
+  // Close modal
+  const modal = bootstrap.Modal.getInstance(document.getElementById('noShowModal'));
+  if (modal) {
+    modal.hide();
+  }
+  
+  currentNoShowSessionId = null;
+}
+
+/**
+ * Handle "Cancel Session" button click
+ */
+function handleCancelNoShow() {
+  if (!currentNoShowSessionId) return;
+  
+  if (confirm('Are you sure you want to cancel this session due to no-show? This action cannot be undone.')) {
+    // Note: We would need a cancel endpoint here, but for now just show a message
+    alert('Session cancellation functionality would be implemented here. For now, please use the All Sessions tab to cancel if needed.');
+    
+    // Close modal
+    const modal = bootstrap.Modal.getInstance(document.getElementById('noShowModal'));
+    if (modal) {
+      modal.hide();
+    }
+    
+    currentNoShowSessionId = null;
+  }
+}
+
+/**
+ * Get check-in status from sessionStorage
+ */
+function getCheckInStatus(sessionId) {
+  const stored = sessionStorage.getItem(`checkin_${sessionId}`);
+  if (stored) {
+    try {
+      return JSON.parse(stored);
+    } catch (e) {
+      return { trainer: false, client: false };
+    }
+  }
+  return { trainer: false, client: false };
+}
+
+/**
+ * Format time for today's display
+ */
+function formatTimeForToday(timeString) {
+  return formatTime(timeString);
+}
+
+/**
+ * Check if session is past start time by specified minutes
+ */
+function isPastStartTime(sessionDate, startTime, minutesPast = 15) {
+  const now = new Date();
+  const sessionDateTime = new Date(`${sessionDate}T${startTime}`);
+  const thresholdTime = new Date(sessionDateTime.getTime() + minutesPast * 60 * 1000);
+  return now >= thresholdTime;
+}
+
+/**
+ * Get time until notification should trigger
+ */
+function getTimeUntilNotification(sessionDate, startTime) {
+  const now = new Date();
+  const sessionDateTime = new Date(`${sessionDate}T${startTime}`);
+  const notificationTime = new Date(sessionDateTime.getTime() + 15 * 60 * 1000);
+  return Math.max(0, notificationTime.getTime() - now.getTime());
+}
+
 // Make functions globally available
 window.loadUnassignedSessions = loadUnassignedSessions;
 window.loadAllSessions = loadAllSessions;
@@ -1222,4 +1723,9 @@ window.assignRoomToSession = assignRoomToSession;
 window.unassignRoom = unassignRoom;
 window.loadReport = loadReport;
 window.initializeReports = initializeReports;
+window.loadTodaySessions = loadTodaySessions;
+window.checkInTrainer = checkInTrainer;
+window.checkInClient = checkInClient;
+window.handleCheckInBoth = handleCheckInBoth;
+window.handleCancelNoShow = handleCancelNoShow;
 

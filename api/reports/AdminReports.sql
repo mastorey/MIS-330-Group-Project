@@ -85,21 +85,48 @@ GROUP BY p.Status
 ORDER BY PaymentStatus;
 
 -- Report 09: Trainer Availability vs Bookings (Utilization)
+-- Calculates utilization based on last 30 days: (Booked sessions) / (Possible sessions) × 100
 SELECT 
     u.UserID AS TrainerID,
     CONCAT(u.FirstName, ' ', u.LastName) AS TrainerName,
     COUNT(DISTINCT ta.AvailabilityID) AS TotalAvailabilitySlots,
-    COUNT(sb.SessionID) AS TotalBookedSessions,
+    COUNT(CASE WHEN sb.SessionDate >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) THEN sb.SessionID END) AS TotalBookedSessions,
     CASE 
-        WHEN COUNT(DISTINCT ta.AvailabilityID) > 0 
-        THEN ROUND((COUNT(sb.SessionID) / COUNT(DISTINCT ta.AvailabilityID)) * 100, 2)
+        WHEN SUM(
+            GREATEST(0, FLOOR((30 + 
+            (CASE ta.DayOfWeek
+                WHEN 'Monday' THEN 0
+                WHEN 'Tuesday' THEN 1
+                WHEN 'Wednesday' THEN 2
+                WHEN 'Thursday' THEN 3
+                WHEN 'Friday' THEN 4
+                WHEN 'Saturday' THEN 5
+                WHEN 'Sunday' THEN 6
+            END - WEEKDAY(DATE_SUB(CURDATE(), INTERVAL 30 DAY)) + 7) % 7) / 7))
+        ) > 0
+        THEN LEAST(100.00, ROUND(
+            (COUNT(CASE WHEN sb.SessionDate >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) THEN sb.SessionID END) / 
+            NULLIF(SUM(
+                GREATEST(0, FLOOR((30 + 
+                (CASE ta.DayOfWeek
+                    WHEN 'Monday' THEN 0
+                    WHEN 'Tuesday' THEN 1
+                    WHEN 'Wednesday' THEN 2
+                    WHEN 'Thursday' THEN 3
+                    WHEN 'Friday' THEN 4
+                    WHEN 'Saturday' THEN 5
+                    WHEN 'Sunday' THEN 6
+                END - WEEKDAY(DATE_SUB(CURDATE(), INTERVAL 30 DAY)) + 7) % 7) / 7))
+            ), 1)) * 100, 2))
         ELSE 0.00
     END AS UtilizationRate,
-    IFNULL(SUM(sb.Price), 0.00) AS RevenueGenerated
+    IFNULL(SUM(CASE WHEN sb.SessionDate >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) THEN sb.Price ELSE 0 END), 0.00) AS RevenueGenerated
 FROM Users u
 JOIN Trainers t ON u.UserID = t.TrainerID
 LEFT JOIN TrainerAvailability ta ON t.TrainerID = ta.TrainerID AND ta.IsDeleted = 0
-LEFT JOIN SessionBooking sb ON t.TrainerID = sb.TrainerID AND sb.IsDeleted = 0
+LEFT JOIN SessionBooking sb ON t.TrainerID = sb.TrainerID 
+    AND sb.IsDeleted = 0
+    AND sb.SessionDate >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
 WHERE u.UserType = 'Trainer' AND u.IsDeleted = 0 AND t.IsDeleted = 0
 GROUP BY u.UserID, u.FirstName, u.LastName
 ORDER BY UtilizationRate DESC;

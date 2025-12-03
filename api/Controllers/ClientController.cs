@@ -335,8 +335,7 @@ namespace MyApp.Namespace
                 DateTime maxDate = today.AddDays(14);
 
                 // Query available trainer availability slots
-                // Note: IsBooked column doesn't exist in database, so we show all non-deleted availability slots
-                // The booking process will check for conflicts when a client tries to book
+                // Exclude slots that are already booked for dates in the next week range
                 string query = @"
                     SELECT 
                         ta.AvailabilityID,
@@ -379,39 +378,77 @@ namespace MyApp.Namespace
 
                 query += $" ORDER BY {orderBy}";
 
+                // First, read all availability data into a list
                 using var command = new MySqlCommand(query, connection);
                 using var reader = command.ExecuteReader();
-                var availabilityList = new List<object>();
+                var availabilityData = new List<(int AvailabilityID, int TrainerID, string TrainerName, int SpecialtyID, string SpecialtyName, string DayOfWeek, string StartTime, decimal Rate)>();
 
                 while (reader.Read())
                 {
                     var availabilityId = reader.GetInt32("AvailabilityID");
                     var dayOfWeek = reader.GetString("DayOfWeek");
                     var startTime = reader.GetTimeSpan("StartTime").ToString(@"hh\:mm");
+                    var rate = reader.IsDBNull(reader.GetOrdinal("Rate")) ? 90.00m : reader.GetDecimal(reader.GetOrdinal("Rate"));
                     
+                    availabilityData.Add((
+                        availabilityId,
+                        reader.GetInt32("TrainerID"),
+                        reader.GetString("TrainerName"),
+                        reader.GetInt32("SpecialtyID"),
+                        reader.GetString("SpecialtyName"),
+                        dayOfWeek,
+                        startTime,
+                        rate
+                    ));
+                }
+                reader.Close(); // Close the reader before executing more queries
+
+                // Now check which availabilities are booked and build the result list
+                var availabilityList = new List<object>();
+                
+                foreach (var avail in availabilityData)
+                {
                     // Calculate the actual date for next week
-                    DateTime calculatedDate = CalculateNextWeekDate(today, dayOfWeek, minDate, maxDate);
+                    DateTime calculatedDate = CalculateNextWeekDate(today, avail.DayOfWeek, minDate, maxDate);
                     
                     if (calculatedDate != DateTime.MinValue)
                     {
-                        var rate = reader.IsDBNull(reader.GetOrdinal("Rate")) ? 90.00m : reader.GetDecimal(reader.GetOrdinal("Rate"));
-                        // If client has a free session reward, set rate to $0
-                        if (hasFreeSession)
+                        // Check if this availability is already booked for the calculated date
+                        string checkBookedQuery = @"
+                            SELECT COUNT(*) 
+                            FROM SessionBooking 
+                            WHERE AvailabilityID = @availabilityId 
+                            AND SessionDate = @calculatedDate
+                            AND Status != 'Cancelled'
+                            AND IsDeleted = 0";
+                        
+                        using var checkBookedCommand = new MySqlCommand(checkBookedQuery, connection);
+                        checkBookedCommand.Parameters.AddWithValue("@availabilityId", avail.AvailabilityID);
+                        checkBookedCommand.Parameters.AddWithValue("@calculatedDate", calculatedDate);
+                        var isBooked = Convert.ToInt32(checkBookedCommand.ExecuteScalar()) > 0;
+                        
+                        // Only add if not booked
+                        if (!isBooked)
                         {
-                            rate = 0.00m;
+                            decimal finalRate = avail.Rate;
+                            // If client has a free session reward, set rate to $0
+                            if (hasFreeSession)
+                            {
+                                finalRate = 0.00m;
+                            }
+                            availabilityList.Add(new
+                            {
+                                availabilityId = avail.AvailabilityID,
+                                trainerId = avail.TrainerID,
+                                trainerName = avail.TrainerName,
+                                specialtyId = avail.SpecialtyID,
+                                specialtyName = avail.SpecialtyName,
+                                dayOfWeek = avail.DayOfWeek,
+                                startTime = avail.StartTime,
+                                calculatedDate = calculatedDate.ToString("yyyy-MM-dd"),
+                                rate = finalRate
+                            });
                         }
-                        availabilityList.Add(new
-                        {
-                            availabilityId = availabilityId,
-                            trainerId = reader.GetInt32("TrainerID"),
-                            trainerName = reader.GetString("TrainerName"),
-                            specialtyId = reader.GetInt32("SpecialtyID"),
-                            specialtyName = reader.GetString("SpecialtyName"),
-                            dayOfWeek = dayOfWeek,
-                            startTime = startTime,
-                            calculatedDate = calculatedDate.ToString("yyyy-MM-dd"),
-                            rate = rate
-                        });
                     }
                 }
 
@@ -477,20 +514,63 @@ namespace MyApp.Namespace
                     });
                 }
 
-                // Verify availability exists
+                // Verify availability exists and is not already booked
                 string checkAvailabilityQuery = @"
                     SELECT ta.TrainerID, ta.SpecialtyID, ta.StartTime, ta.DayOfWeek
                     FROM TrainerAvailability ta
                     WHERE ta.AvailabilityID = @availabilityId 
                     AND ta.IsDeleted = 0
+                    AND ta.AvailabilityID NOT IN (
+                        SELECT sb.AvailabilityID 
+                        FROM SessionBooking sb 
+                        WHERE sb.AvailabilityID = @availabilityId 
+                        AND sb.SessionDate = @calculatedDate
+                        AND sb.Status != 'Cancelled'
+                        AND sb.IsDeleted = 0
+                    )
                     LIMIT 1";
+
+                // Parse calculated date first for the check
+                if (!DateTime.TryParse(request.CalculatedDate, out DateTime sessionDate))
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        message = "Invalid date format"
+                    });
+                }
 
                 using var checkCommand = new MySqlCommand(checkAvailabilityQuery, connection);
                 checkCommand.Parameters.AddWithValue("@availabilityId", request.AvailabilityId);
+                checkCommand.Parameters.AddWithValue("@calculatedDate", sessionDate);
                 
                 using var checkReader = checkCommand.ExecuteReader();
                 if (!checkReader.Read())
                 {
+                    // Check if availability exists but is booked
+                    checkReader.Close();
+                    string checkBookedQuery = @"
+                        SELECT COUNT(*) 
+                        FROM SessionBooking 
+                        WHERE AvailabilityID = @availabilityId 
+                        AND SessionDate = @calculatedDate
+                        AND Status != 'Cancelled'
+                        AND IsDeleted = 0";
+                    
+                    using var bookedCommand = new MySqlCommand(checkBookedQuery, connection);
+                    bookedCommand.Parameters.AddWithValue("@availabilityId", request.AvailabilityId);
+                    bookedCommand.Parameters.AddWithValue("@calculatedDate", sessionDate);
+                    var bookedResult = bookedCommand.ExecuteScalar();
+                    
+                    if (bookedResult != null && Convert.ToInt32(bookedResult) > 0)
+                    {
+                        return BadRequest(new
+                        {
+                            success = false,
+                            message = "This time slot has already been booked for this date. Please select a different time."
+                        });
+                    }
+                    
                     return BadRequest(new
                     {
                         success = false,
@@ -557,16 +637,6 @@ namespace MyApp.Namespace
                     }
                 }
 
-                // Parse calculated date
-                if (!DateTime.TryParse(request.CalculatedDate, out DateTime sessionDate))
-                {
-                    return BadRequest(new
-                    {
-                        success = false,
-                        message = "Invalid date format"
-                    });
-                }
-
                 // Verify date is within next week range (7-14 days)
                 DateTime today = DateTime.Today;
                 DateTime minDate = today.AddDays(7);
@@ -581,15 +651,16 @@ namespace MyApp.Namespace
                     });
                 }
 
-                // Create session booking - For demo purposes, mark as Completed immediately
+                // Create session booking - Mark as Pending until confirmed/completed
                 string insertSessionQuery = @"
-                    INSERT INTO SessionBooking (TrainerID, ClientID, SpecialtyID, SessionDate, StartTime, Status, Price)
-                    VALUES (@trainerId, @clientId, @specialtyId, @sessionDate, @startTime, 'Completed', @price)";
+                    INSERT INTO SessionBooking (TrainerID, ClientID, SpecialtyID, AvailabilityID, SessionDate, StartTime, Status, Price)
+                    VALUES (@trainerId, @clientId, @specialtyId, @availabilityId, @sessionDate, @startTime, 'Pending', @price)";
 
                 using var sessionCommand = new MySqlCommand(insertSessionQuery, connection);
                 sessionCommand.Parameters.AddWithValue("@trainerId", trainerId);
                 sessionCommand.Parameters.AddWithValue("@clientId", clientId);
                 sessionCommand.Parameters.AddWithValue("@specialtyId", specialtyId);
+                sessionCommand.Parameters.AddWithValue("@availabilityId", request.AvailabilityId);
                 sessionCommand.Parameters.AddWithValue("@sessionDate", sessionDate);
                 sessionCommand.Parameters.AddWithValue("@startTime", startTime);
                 sessionCommand.Parameters.AddWithValue("@price", price);
@@ -600,16 +671,18 @@ namespace MyApp.Namespace
                 // Note: IsBooked column doesn't exist in database
                 // Booking status is tracked via SessionBooking table instead
 
-                // Create payment record - For demo purposes, mark as Completed immediately if price > 0
-                // If free session (price = 0), still create payment record but mark as Completed
+                // Create payment record - Mark as Pending until client pays
+                // If free session (price = 0), mark payment as Completed since no payment needed
+                string paymentStatus = price == 0 ? "Completed" : "Pending";
                 string insertPaymentQuery = @"
                     INSERT INTO Payments (ClientID, SessionID, Amount, Status)
-                    VALUES (@clientId, @sessionId, @price, 'Completed')";
+                    VALUES (@clientId, @sessionId, @price, @paymentStatus)";
 
                 using var paymentCommand = new MySqlCommand(insertPaymentQuery, connection);
                 paymentCommand.Parameters.AddWithValue("@clientId", clientId);
                 paymentCommand.Parameters.AddWithValue("@sessionId", sessionId);
                 paymentCommand.Parameters.AddWithValue("@price", price);
+                paymentCommand.Parameters.AddWithValue("@paymentStatus", paymentStatus);
                 paymentCommand.ExecuteNonQuery();
 
                 // Verify the session was created and get count (Pending, Confirmed, and Completed all count)
@@ -684,7 +757,7 @@ namespace MyApp.Namespace
         }
 
         [HttpPut("sessions/{id}/cancel")]
-        public IActionResult CancelSession(int id, [FromQuery] string email)
+        public IActionResult CancelSession(int id, [FromBody] CancelSessionRequest request, [FromQuery] string email)
         {
             if (string.IsNullOrEmpty(email))
             {
@@ -692,6 +765,15 @@ namespace MyApp.Namespace
                 {
                     success = false,
                     message = "Email is required"
+                });
+            }
+
+            if (request == null || string.IsNullOrWhiteSpace(request.CancellationReason))
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Cancellation reason is required"
                 });
             }
 
@@ -712,7 +794,7 @@ namespace MyApp.Namespace
 
                 // Verify session belongs to client and is not already cancelled/completed
                 string checkSessionQuery = @"
-                    SELECT SessionID, TrainerID, SpecialtyID, SessionDate, StartTime, Status
+                    SELECT SessionID, TrainerID, SpecialtyID, AvailabilityID, SessionDate, StartTime, Status
                     FROM SessionBooking 
                     WHERE SessionID = @sessionId 
                     AND ClientID = @clientId 
@@ -735,6 +817,7 @@ namespace MyApp.Namespace
                 string currentStatus = checkReader.GetString("Status");
                 int trainerId = checkReader.GetInt32("TrainerID");
                 int specialtyId = checkReader.GetInt32("SpecialtyID");
+                int availabilityId = checkReader.GetInt32("AvailabilityID");
                 DateTime sessionDate = checkReader.GetDateTime("SessionDate");
                 TimeSpan startTime = checkReader.GetTimeSpan("StartTime");
                 checkReader.Close();
@@ -768,44 +851,16 @@ namespace MyApp.Namespace
                 updateSessionCommand.Parameters.AddWithValue("@sessionId", id);
                 updateSessionCommand.ExecuteNonQuery();
 
-                // Get day of week from session date (convert enum to string format used in DB)
-                Dictionary<DayOfWeek, string> dayMap = new Dictionary<DayOfWeek, string>
-                {
-                    { DayOfWeek.Monday, "Monday" },
-                    { DayOfWeek.Tuesday, "Tuesday" },
-                    { DayOfWeek.Wednesday, "Wednesday" },
-                    { DayOfWeek.Thursday, "Thursday" },
-                    { DayOfWeek.Friday, "Friday" },
-                    { DayOfWeek.Saturday, "Saturday" },
-                    { DayOfWeek.Sunday, "Sunday" }
-                };
-                string dayOfWeek = dayMap[sessionDate.DayOfWeek];
-                
-                // Find and free up the TrainerAvailability slot
-                string findAvailabilityQuery = @"
-                    SELECT AvailabilityID 
-                    FROM TrainerAvailability 
-                    WHERE TrainerID = @trainerId 
-                    AND SpecialtyID = @specialtyId 
-                    AND DayOfWeek = @dayOfWeek 
-                    AND StartTime = @startTime 
-                    AND IsDeleted = 0
-                    LIMIT 1";
+                // Create SessionCancellations record
+                string insertCancellationQuery = @"
+                    INSERT INTO SessionCancellations (SessionID, CancellationReason, CancelledBy)
+                    VALUES (@sessionId, @cancellationReason, @cancelledBy)";
 
-                using var findAvailCommand = new MySqlCommand(findAvailabilityQuery, connection);
-                findAvailCommand.Parameters.AddWithValue("@trainerId", trainerId);
-                findAvailCommand.Parameters.AddWithValue("@specialtyId", specialtyId);
-                findAvailCommand.Parameters.AddWithValue("@dayOfWeek", dayOfWeek);
-                findAvailCommand.Parameters.AddWithValue("@startTime", startTime);
-
-                var availabilityIdResult = findAvailCommand.ExecuteScalar();
-                if (availabilityIdResult != null)
-                {
-                    int availabilityId = Convert.ToInt32(availabilityIdResult);
-                    
-                    // Note: IsBooked column doesn't exist in database
-                    // Availability is freed when session is cancelled (tracked via SessionBooking table)
-                }
+                using var insertCancellationCommand = new MySqlCommand(insertCancellationQuery, connection);
+                insertCancellationCommand.Parameters.AddWithValue("@sessionId", id);
+                insertCancellationCommand.Parameters.AddWithValue("@cancellationReason", request.CancellationReason.Trim());
+                insertCancellationCommand.Parameters.AddWithValue("@cancelledBy", clientId);
+                insertCancellationCommand.ExecuteNonQuery();
 
                 // Update payment status to Failed if payment was completed (for refund tracking)
                 string updatePaymentQuery = @"
@@ -1115,6 +1170,11 @@ namespace MyApp.Namespace
         public int AvailabilityId { get; set; }
         public string CalculatedDate { get; set; } = string.Empty;
         public bool? UseFreeSession { get; set; }
+    }
+
+    public class CancelSessionRequest
+    {
+        public string CancellationReason { get; set; } = string.Empty;
     }
 }
 
