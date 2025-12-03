@@ -1005,12 +1005,16 @@ namespace MyApp.Namespace
                     Console.WriteLine($"[Tracker]   - {kvp.Key}: {kvp.Value}");
                 }
                 
+                // Only count sessions that have a COMPLETED payment
                 string completedSessionsQuery = @"
                     SELECT COUNT(*) 
-                    FROM SessionBooking 
-                    WHERE ClientID = @clientId 
-                    AND (Status = 'Completed' OR Status = 'Pending' OR Status = 'Confirmed')
-                    AND IsDeleted = 0";
+                    FROM SessionBooking sb
+                    INNER JOIN Payments p ON sb.SessionID = p.SessionID
+                    WHERE sb.ClientID = @clientId 
+                    AND sb.IsDeleted = 0
+                    AND p.ClientID = @clientId
+                    AND p.IsDeleted = 0
+                    AND p.Status = 'Completed'";
 
                 using var completedCommand = new MySqlCommand(completedSessionsQuery, connection);
                 completedCommand.Parameters.AddWithValue("@clientId", clientId);
@@ -1045,17 +1049,20 @@ namespace MyApp.Namespace
                 int rewardsAvailable = cyclesCompleted - freeSessionsUsed;
                 bool hasFreeSession = rewardsAvailable > 0;
 
-                // Get total calories burned from sessions (Pending, Confirmed, and Completed all count)
+                // Get total calories burned from sessions that have a COMPLETED payment
                 string caloriesQuery = @"
                     SELECT 
                         s.SpecialtyName,
                         COUNT(*) AS SessionCount
                     FROM SessionBooking sb
                     INNER JOIN Specialties s ON sb.SpecialtyID = s.SpecialtyID
+                    INNER JOIN Payments p ON sb.SessionID = p.SessionID
                     WHERE sb.ClientID = @clientId 
-                    AND (sb.Status = 'Completed' OR sb.Status = 'Pending' OR sb.Status = 'Confirmed')
                     AND sb.IsDeleted = 0
                     AND s.IsDeleted = 0
+                    AND p.ClientID = @clientId
+                    AND p.IsDeleted = 0
+                    AND p.Status = 'Completed'
                     GROUP BY s.SpecialtyID, s.SpecialtyName";
 
                 using var caloriesCommand = new MySqlCommand(caloriesQuery, connection);

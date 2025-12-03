@@ -19,6 +19,35 @@ body {
   min-height: 100vh;
 }
 
+/* Global loading overlay */
+.page-loader {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  transition: opacity 0.3s ease;
+}
+
+.page-loader.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.page-loader .spinner-border {
+  width: 3rem;
+  height: 3rem;
+}
+
+.page-loader-text {
+  margin-top: 1rem;
+  color: var(--gym-text-secondary);
+  font-weight: 500;
+  text-align: center;
+}
+
 /* Navigation Bar Styling */
 .navbar {
   background: rgba(26, 26, 26, 0.95) !important;
