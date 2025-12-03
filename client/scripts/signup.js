@@ -49,6 +49,42 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
+  // Age validation function
+  function isAtLeast18(birthday) {
+    if (!birthday) return false;
+    const birthDate = new Date(birthday);
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age >= 18;
+  }
+
+  // Birthday validation
+  const birthdayInput = document.getElementById('birthday');
+  const birthdayFeedback = birthdayInput.nextElementSibling;
+  
+  birthdayInput.addEventListener('change', function() {
+    if (birthdayInput.value) {
+      if (!isAtLeast18(birthdayInput.value)) {
+        birthdayInput.setCustomValidity('You must be 18 years or older to make an account.');
+        birthdayInput.classList.add('is-invalid');
+        birthdayInput.classList.remove('is-valid');
+        birthdayFeedback.textContent = 'You must be 18 years or older to make an account.';
+      } else {
+        birthdayInput.setCustomValidity('');
+        birthdayInput.classList.remove('is-invalid');
+        birthdayInput.classList.add('is-valid');
+      }
+    } else {
+      birthdayInput.setCustomValidity('');
+      birthdayInput.classList.remove('is-invalid', 'is-valid');
+      birthdayFeedback.textContent = 'Please provide your birthday.';
+    }
+  });
+
   // Form submission handler
   form.addEventListener('submit', function(event) {
     event.preventDefault();
@@ -60,6 +96,17 @@ document.addEventListener('DOMContentLoaded', function() {
       confirmPassword.classList.add('is-invalid');
     } else {
       confirmPassword.setCustomValidity('');
+    }
+
+    // Check age requirement (only if birthday is provided)
+    if (birthdayInput.value && !isAtLeast18(birthdayInput.value)) {
+      birthdayInput.setCustomValidity('You must be 18 years or older to make an account.');
+      birthdayFeedback.textContent = 'You must be 18 years or older to make an account.';
+      birthdayInput.classList.add('is-invalid');
+      form.classList.add('was-validated');
+      return;
+    } else {
+      birthdayInput.setCustomValidity('');
     }
 
     // Check form validity

@@ -41,7 +41,7 @@ namespace MyApp.Namespace
                     });
                 }
 
-                // Query availability with specialty names
+                // Query availability with specialty names and booking status
                 string query = @"
                     SELECT 
                         ta.AvailabilityID,
@@ -49,11 +49,21 @@ namespace MyApp.Namespace
                         ta.StartTime,
                         ta.SpecialtyID,
                         s.SpecialtyName,
-                        ta.IsBooked
+                        CASE 
+                            WHEN EXISTS (
+                                SELECT 1 
+                                FROM SessionBooking sb 
+                                WHERE sb.AvailabilityID = ta.AvailabilityID 
+                                AND sb.Status != 'Cancelled'
+                                AND sb.IsDeleted = 0
+                            ) THEN 1 
+                            ELSE 0 
+                        END AS IsBooked
                     FROM TrainerAvailability ta
                     INNER JOIN Specialties s ON ta.SpecialtyID = s.SpecialtyID
                     WHERE ta.TrainerID = @trainerId 
                     AND ta.IsDeleted = 0
+                    AND s.IsDeleted = 0
                     ORDER BY 
                         FIELD(ta.DayOfWeek, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'),
                         ta.StartTime";
@@ -64,16 +74,23 @@ namespace MyApp.Namespace
                 using var reader = command.ExecuteReader();
                 var availabilityList = new List<object>();
 
+                int availabilityIdOrdinal = reader.GetOrdinal("AvailabilityID");
+                int dayOfWeekOrdinal = reader.GetOrdinal("DayOfWeek");
+                int startTimeOrdinal = reader.GetOrdinal("StartTime");
+                int specialtyIdOrdinal = reader.GetOrdinal("SpecialtyID");
+                int specialtyNameOrdinal = reader.GetOrdinal("SpecialtyName");
+                int isBookedOrdinal = reader.GetOrdinal("IsBooked");
+
                 while (reader.Read())
                 {
                     var availability = new
                     {
-                        availabilityId = reader.GetInt32("AvailabilityID"),
-                        dayOfWeek = reader.GetString("DayOfWeek"),
-                        startTime = reader.GetTimeSpan("StartTime").ToString(@"hh\:mm"),
-                        specialtyId = reader.GetInt32("SpecialtyID"),
-                        specialtyName = reader.GetString("SpecialtyName"),
-                        isBooked = reader.GetBoolean("IsBooked")
+                        availabilityId = reader.IsDBNull(availabilityIdOrdinal) ? 0 : reader.GetInt32(availabilityIdOrdinal),
+                        dayOfWeek = reader.IsDBNull(dayOfWeekOrdinal) ? string.Empty : reader.GetString(dayOfWeekOrdinal),
+                        startTime = reader.IsDBNull(startTimeOrdinal) ? string.Empty : reader.GetTimeSpan(startTimeOrdinal).ToString(@"hh\:mm"),
+                        specialtyId = reader.IsDBNull(specialtyIdOrdinal) ? 0 : reader.GetInt32(specialtyIdOrdinal),
+                        specialtyName = reader.IsDBNull(specialtyNameOrdinal) ? string.Empty : reader.GetString(specialtyNameOrdinal),
+                        isBooked = reader.IsDBNull(isBookedOrdinal) ? false : reader.GetInt32(isBookedOrdinal) == 1
                     };
                     availabilityList.Add(availability);
                 }
@@ -86,20 +103,26 @@ namespace MyApp.Namespace
             }
             catch (MySqlException ex)
             {
+                Console.WriteLine($"MySQL Error in GetAvailability: {ex.Message}");
+                Console.WriteLine($"Stack Trace: {ex.StackTrace}");
                 return StatusCode(500, new
                 {
                     success = false,
                     message = "Database error occurred",
-                    error = ex.Message
+                    error = ex.Message,
+                    stackTrace = ex.StackTrace
                 });
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"Error in GetAvailability: {ex.Message}");
+                Console.WriteLine($"Stack Trace: {ex.StackTrace}");
                 return StatusCode(500, new
                 {
                     success = false,
                     message = "An error occurred while fetching availability",
-                    error = ex.Message
+                    error = ex.Message,
+                    stackTrace = ex.StackTrace
                 });
             }
         }
@@ -428,8 +451,8 @@ namespace MyApp.Namespace
 
                 // Insert availability
                 string insertQuery = @"
-                    INSERT INTO TrainerAvailability (TrainerID, SpecialtyID, DayOfWeek, StartTime, IsBooked)
-                    VALUES (@trainerId, @specialtyId, @dayOfWeek, @startTime, 0)";
+                    INSERT INTO TrainerAvailability (TrainerID, SpecialtyID, DayOfWeek, StartTime)
+                    VALUES (@trainerId, @specialtyId, @dayOfWeek, @startTime)";
 
                 using var command = new MySqlCommand(insertQuery, connection);
                 command.Parameters.AddWithValue("@trainerId", trainerId);
@@ -760,15 +783,17 @@ namespace MyApp.Namespace
         private bool IsAvailabilityBooked(MySqlConnection connection, int availabilityId)
         {
             string query = @"
-                SELECT IsBooked 
-                FROM TrainerAvailability 
-                WHERE AvailabilityID = @availabilityId";
+                SELECT COUNT(*) 
+                FROM SessionBooking 
+                WHERE AvailabilityID = @availabilityId 
+                AND Status != 'Cancelled'
+                AND IsDeleted = 0";
 
             using var command = new MySqlCommand(query, connection);
             command.Parameters.AddWithValue("@availabilityId", availabilityId);
             
-            var result = command.ExecuteScalar();
-            return result != null && Convert.ToBoolean(result);
+            var count = Convert.ToInt32(command.ExecuteScalar());
+            return count > 0;
         }
 
         [HttpGet("sessions")]

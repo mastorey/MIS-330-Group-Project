@@ -112,6 +112,11 @@
           </button>
         </li>
         <li class="nav-item" role="presentation">
+          <button class="nav-link" id="dailyCheckIn-tab" data-bs-toggle="tab" data-bs-target="#dailyCheckInTab" type="button" role="tab" aria-controls="dailyCheckInTab" aria-selected="false" onclick="loadTodaySessions()">
+            Daily Check-In
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
           <button class="nav-link" id="reports-tab" data-bs-toggle="tab" data-bs-target="#reportsTab" type="button" role="tab" aria-controls="reportsTab" aria-selected="false" onclick="loadReport(currentReportId || 'specialty-performance')">
             Reports
           </button>
@@ -141,6 +146,19 @@
               <!-- All sessions data will be displayed here -->
               <div id="allSessionsData" class="mt-3">
                 <p class="text-white">Loading all sessions...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Daily Check-In Tab -->
+        <div class="tab-pane fade" id="dailyCheckInTab" role="tabpanel" aria-labelledby="dailyCheckIn-tab">
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <h5 class="card-title mb-4">Daily Check-In - Today's Sessions</h5>
+              <!-- Today's sessions data will be displayed here -->
+              <div id="todaySessionsData" class="mt-3">
+                <p class="text-white">Loading today's sessions...</p>
               </div>
             </div>
           </div>
@@ -227,6 +245,26 @@
 
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+    <!-- No-Show Notification Modal -->
+    <div class="modal fade" id="noShowModal" tabindex="-1" aria-labelledby="noShowModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header bg-warning">
+            <h5 class="modal-title" id="noShowModalLabel">⚠️ No-Show Alert</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p id="noShowModalMessage"></p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-success" id="checkInBothBtn" onclick="handleCheckInBoth()">Check In Both</button>
+            <button type="button" class="btn btn-danger" id="cancelSessionBtn" onclick="handleCancelNoShow()">Cancel Session</button>
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Dismiss</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Profile Modal -->
     <div class="modal fade" id="profileModal" tabindex="-1" aria-labelledby="profileModalLabel" aria-hidden="true">

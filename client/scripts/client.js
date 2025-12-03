@@ -870,11 +870,42 @@ async function confirmBooking(availabilityId, calculatedDate, modal, useFreeSess
 }
 
 /**
- * Cancel a booked session
+ * Cancel a booked session - shows modal to collect cancellation reason
  */
-async function cancelSession(sessionId) {
-  // Show confirmation popup
-  if (!confirm('Are you sure you want to cancel this session? This action cannot be undone.')) {
+function cancelSession(sessionId) {
+  const userEmail = localStorage.getItem('userEmail');
+  if (!userEmail) {
+    alert('Please log in to cancel sessions.');
+    return;
+  }
+
+  // Set the session ID in the hidden input
+  document.getElementById('cancelSessionId').value = sessionId;
+  
+  // Reset the form
+  const form = document.getElementById('cancelSessionForm');
+  form.classList.remove('was-validated');
+  document.getElementById('cancellationReason').value = '';
+  
+  // Show the modal
+  const modal = new bootstrap.Modal(document.getElementById('cancelSessionModal'));
+  modal.show();
+}
+
+/**
+ * Handle cancellation form submission
+ */
+async function handleCancelSessionSubmit(event) {
+  event.preventDefault();
+  event.stopPropagation();
+
+  const form = document.getElementById('cancelSessionForm');
+  const cancellationReason = document.getElementById('cancellationReason').value.trim();
+  const sessionId = document.getElementById('cancelSessionId').value;
+
+  // Validate form
+  if (!form.checkValidity() || !cancellationReason) {
+    form.classList.add('was-validated');
     return;
   }
 
@@ -884,12 +915,19 @@ async function cancelSession(sessionId) {
     return;
   }
 
+  // Hide modal
+  const modal = bootstrap.Modal.getInstance(document.getElementById('cancelSessionModal'));
+  modal.hide();
+
   try {
     const response = await fetch(`${API_BASE_URL}/client/sessions/${sessionId}/cancel?email=${encodeURIComponent(userEmail)}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify({
+        cancellationReason: cancellationReason
+      }),
     });
     
     // Handle response - check if it's OK and has content
