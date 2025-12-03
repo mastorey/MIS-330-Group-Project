@@ -52,7 +52,9 @@ document.addEventListener('DOMContentLoaded', function() {
   // Age validation function
   function isAtLeast18(birthday) {
     if (!birthday) return false;
-    const birthDate = new Date(birthday);
+    // Parse date string manually in local timezone to avoid UTC conversion issues
+    const [y, m, d] = birthday.split('-');
+    const birthDate = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
     const today = new Date();
     let age = today.getFullYear() - birthDate.getFullYear();
     const monthDiff = today.getMonth() - birthDate.getMonth();

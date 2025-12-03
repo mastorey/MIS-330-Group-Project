@@ -103,26 +103,18 @@ namespace MyApp.Namespace
             }
             catch (MySqlException ex)
             {
-                Console.WriteLine($"MySQL Error in GetAvailability: {ex.Message}");
-                Console.WriteLine($"Stack Trace: {ex.StackTrace}");
                 return StatusCode(500, new
                 {
                     success = false,
-                    message = "Database error occurred",
-                    error = ex.Message,
-                    stackTrace = ex.StackTrace
+                    message = "Database error occurred"
                 });
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error in GetAvailability: {ex.Message}");
-                Console.WriteLine($"Stack Trace: {ex.StackTrace}");
                 return StatusCode(500, new
                 {
                     success = false,
-                    message = "An error occurred while fetching availability",
-                    error = ex.Message,
-                    stackTrace = ex.StackTrace
+                    message = "An error occurred while fetching availability"
                 });
             }
         }
